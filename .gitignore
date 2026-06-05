@@ -8,6 +8,7 @@ deploy/secrets.env
 deploy/secrets.local.env
 deploy/hostinger-production.env
 deploy/*.zip
+deploy-output/
 *.log
 .DS_Store
 coverage/

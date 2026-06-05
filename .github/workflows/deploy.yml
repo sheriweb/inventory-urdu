@@ -3,6 +3,7 @@ name: Deploy to Hostinger
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -15,6 +16,22 @@ jobs:
           node-version: '20'
           cache: npm
 
+      - name: Check GitHub secrets
+        run: |
+          SERVER="${{ secrets.FTP_SERVER }}"
+          [ -z "$SERVER" ] && SERVER="${{ secrets.FTP_HOST }}"
+          USER="${{ secrets.FTP_USERNAME }}"
+          [ -z "$USER" ] && USER="${{ secrets.FTP_USER }}"
+          PASS="${{ secrets.FTP_PASSWORD }}"
+          if [ -z "$SERVER" ] || [ -z "$USER" ] || [ -z "$PASS" ]; then
+            echo "❌ FTP secrets missing. GitHub → Settings → Secrets → Actions:"
+            echo "   FTP_SERVER (ya FTP_HOST)"
+            echo "   FTP_USERNAME (ya FTP_USER)"
+            echo "   FTP_PASSWORD"
+            exit 1
+          fi
+          echo "✅ FTP secrets found"
+
       - name: Install & build
         run: |
           npm ci
@@ -23,19 +40,17 @@ jobs:
       - name: Prepare FTP upload folder
         run: bash scripts/prepare-ftp-deploy.sh
 
-      # --- FTP deploy (aap pehle yahi use karte thay) ---
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
+          server: ${{ secrets.FTP_SERVER || secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME || secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: 21
           local-dir: ./deploy-output/
           server-dir: ./
           dangerous-clean-slate: false
 
-      # --- Optional: Hostinger Node.js API (Node app chalane ke liye behtar) ---
       - name: Trigger Hostinger Node.js build (optional)
         continue-on-error: true
         env:
@@ -44,7 +59,6 @@ jobs:
         run: |
           if [ -z "${HOSTINGER_API_TOKEN:-}" ]; then
             echo "HOSTINGER_API_TOKEN not set — FTP upload only."
-            echo "Node.js app ke liye hPanel mein GitHub connect karein ya API token add karein."
             exit 0
           fi
           bash scripts/create-deploy-zip.sh
