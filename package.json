@@ -22,6 +22,7 @@
     "hostinger:db:seed": "npm run db:seed -w @inventory-urdu/api",
     "hostinger:install": "npm install",
     "hostinger:build": "npm run db:generate -w @inventory-urdu/api && npm run build -w @inventory-urdu/api && npm run build -w @inventory-urdu/web",
+    "hostinger:deploy": "npm install && npm run hostinger:build",
     "hostinger:start": "node scripts/hostinger-combined-start.mjs",
     "deploy:ftp": "npm run hostinger:build && bash scripts/prepare-ftp-deploy.sh && bash scripts/ftp-upload-local.sh",
     "deploy:zip": "bash scripts/create-deploy-zip.sh",
