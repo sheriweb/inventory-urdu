@@ -1,83 +1,44 @@
-# Deploy — Git push = Hostinger live
+# Deploy — Git push = Hostinger
 
-## ⚠️ FTP vs Node.js
+## FTP + Git (jo aap pehle karte thay)
 
-**FTP sirf PHP/static sites ke liye hai.**  
-Inventory-urdu **Node.js app** hai (NestJS + Next.js) — is liye **FTP pipeline kaam nahi karegi**.
+GitHub repo → **Settings → Secrets → Actions** — yeh 4 secrets add karein:
 
-Is project ke liye **2 tareeqe** hain:
+| Secret | Example |
+|--------|---------|
+| `FTP_SERVER` | `156.67.67.67` |
+| `FTP_USERNAME` | `u938549775.paleturquoise-stork-447573.hostingersite.com` |
+| `FTP_PASSWORD` | aap ka FTP password |
+| `FTP_SERVER_DIR` | `./` (default — public_html) |
 
-| Tareeqa | Kaise |
-|--------|--------|
-| **A — GitHub Actions** (yeh repo) | `main` push → auto deploy via Hostinger API |
-| **B — hPanel Git** (sab se aasaan) | hPanel میں repo connect → har push auto deploy |
-
----
-
-## Pipeline A — GitHub Secrets (ek dafa set karein)
-
-GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**
-
-| Secret | Value |
-|--------|-------|
-| `HOSTINGER_API_TOKEN` | hPanel → **Profile → API** → Create token |
-| `HOSTINGER_DOMAIN` | `paleturquoise-stork-447573.hostingersite.com` |
-
-Phir `git push origin main` — workflow `.github/workflows/deploy.yml` khud deploy karega.
-
-**Pehli dafa:** hPanel میں is domain par **Node.js Web App** enable hona chahiye (PHP default page se replace).
+Phir `git push` → files Hostinger par upload ho jati hain.
 
 ---
 
-## Database — kya chahiye?
+## ⚠️ Zaroori baat — Node.js vs PHP
 
-### 1. Hostinger MySQL (aap ke paas hai)
+Aap pehle shayad **PHP / WordPress / static** site FTP se deploy karte thay — woh theek kaam karta hai.
 
-| Item | Value |
-|------|-------|
-| Database | `testinven` |
-| User | `testinven` |
-| Password | (jo aap ne set kiya) |
-| Host | `localhost` (server par) |
+**Inventory-urdu** Node.js app hai (API + Next.js). Sirf FTP se files upload hone se app **automatic nahi chalti** — server ko Node.js enable chahiye.
 
-### 2. Hostinger Node.js → Environment Variables (ek dafa)
+### Node app chalane ke 2 tareeqe (ek choose karein):
 
-hPanel → website → Node.js → **Environment variables** میں یہ add کریں:
+**1. hPanel GitHub (sab se aasaan — FTP jaisa feel)**  
+hPanel → Websites → **Node.js Web App** → **Import Git** → `sheriweb/inventory-urdu`  
+→ har `git push` par Hostinger khud build + deploy karega. **FTP ki zaroorat nahi.**
 
-```
-DATABASE_URL=mysql://testinven:YOUR_PASSWORD@localhost:3306/testinven
-```
-(Password میں `@` ho to `%40` use کریں)
-
-Plus JWT secrets, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `CORS_ORIGINS`, `NEXT_PUBLIC_API_URL` — details `deploy/secrets.template.env` میں ہیں.
-
-### 3. Tables banana (pehli dafa sirf)
-
-Deploy ke baad Hostinger terminal / SSH (agar ho):
-
-```bash
-npm run hostinger:db:push
-npm run hostinger:db:seed
-```
-
-Ya env میں `RUN_DB_SETUP=1` set کریں (pehli deploy کے بعد ہٹا دیں).
+**2. GitHub Secret `HOSTINGER_API_TOKEN`**  
+hPanel → Profile → API → token → GitHub secret  
+→ pipeline FTP ke sath Node.js build bhi trigger karegi.
 
 ---
 
-## Local secrets (optional)
+## Database
 
-```bash
-cp deploy/secrets.template.env deploy/secrets.env
-```
+| Chahiye | Detail |
+|---------|--------|
+| MySQL | `testinven` (Hostinger par ban chuka) |
+| `DATABASE_URL` | Hostinger Node.js env vars mein |
+| Tables | pehli deploy: `RUN_DB_SETUP=1` env, phir hata dein |
 
-`deploy/secrets.env` git میں نہیں جاتی.
-
----
-
-## Build commands (reference)
-
-| | Command |
-|--|---------|
-| Install | `npm ci` |
-| Build | `npm run hostinger:build` |
-| Start | `npm run hostinger:start` |
+Poori list: `deploy/secrets.template.env`

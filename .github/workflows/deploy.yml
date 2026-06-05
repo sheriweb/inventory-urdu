@@ -13,15 +13,40 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
-      - name: Create source archive
-        run: bash scripts/create-deploy-zip.sh
+      - name: Install & build
+        run: |
+          npm ci
+          npm run hostinger:build
 
-      - name: Install deploy dependencies
-        run: npm install axios tus-js-client
+      - name: Prepare FTP upload folder
+        run: bash scripts/prepare-ftp-deploy.sh
 
-      - name: Deploy to Hostinger (Node.js API)
+      # --- FTP deploy (aap pehle yahi use karte thay) ---
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 21
+          local-dir: ./deploy-output/
+          server-dir: ./
+          dangerous-clean-slate: false
+
+      # --- Optional: Hostinger Node.js API (Node app chalane ke liye behtar) ---
+      - name: Trigger Hostinger Node.js build (optional)
+        continue-on-error: true
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
           HOSTINGER_DOMAIN: ${{ secrets.HOSTINGER_DOMAIN }}
-        run: node scripts/hostinger-deploy.mjs
+        run: |
+          if [ -z "${HOSTINGER_API_TOKEN:-}" ]; then
+            echo "HOSTINGER_API_TOKEN not set — FTP upload only."
+            echo "Node.js app ke liye hPanel mein GitHub connect karein ya API token add karein."
+            exit 0
+          fi
+          bash scripts/create-deploy-zip.sh
+          npm install axios tus-js-client
+          node scripts/hostinger-deploy.mjs
