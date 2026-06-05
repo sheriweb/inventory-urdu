@@ -1,14 +1,10 @@
 name: Deploy to Hostinger
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
   deploy:
-    # Sirf tab chale jab Hostinger API token ho — warna self-hosted workflow use karein
-    if: ${{ secrets.HOSTINGER_API_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
