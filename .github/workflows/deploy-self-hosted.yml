@@ -12,6 +12,8 @@
 name: Deploy to Hostinger (Self-Hosted FTP)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:

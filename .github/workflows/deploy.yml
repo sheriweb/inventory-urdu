@@ -7,6 +7,8 @@ on:
 
 jobs:
   deploy:
+    # Sirf tab chale jab Hostinger API token ho — warna self-hosted workflow use karein
+    if: ${{ secrets.HOSTINGER_API_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,14 +59,5 @@ jobs:
           node scripts/hostinger-deploy.mjs
           echo "success=true" >> "$GITHUB_OUTPUT"
 
-      - name: Verify deployment
-        run: |
-          if [ "${{ steps.api_deploy.outputs.success }}" = "true" ]; then
-            echo "✅ Deployed via Hostinger API"
-            exit 0
-          fi
-          echo "::error::HOSTINGER_API_TOKEN set nahi — cloud FTP Hostinger par block hai (timeout)."
-          echo "::error::Fix 1: GitHub Secrets → HOSTINGER_API_TOKEN + HOSTINGER_DOMAIN"
-          echo "::error::Fix 2: Self-hosted runner → workflow deploy-self-hosted.yml"
-          echo "::error::Fix 3: hPanel → Node.js → File upload (ZIP)"
-          exit 1
+      - name: Deploy complete
+        run: echo "✅ Deployed via Hostinger API"
