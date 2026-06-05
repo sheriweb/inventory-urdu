@@ -1,17 +1,27 @@
 # Deploy — Git push = Hostinger
 
-## FTP + Git (jo aap pehle karte thay)
+## GitHub Actions deploy (recommended)
 
-GitHub repo → **Settings → Secrets → Actions** — yeh 4 secrets add karein:
+GitHub repo → **Settings → Secrets → Actions**:
 
-| Secret | Example |
-|--------|---------|
-| `FTP_SERVER` | `156.67.67.67` |
-| `FTP_USERNAME` | `u938549775.paleturquoise-stork-447573.hostingersite.com` |
-| `FTP_PASSWORD` | aap ka FTP password |
-| `FTP_SERVER_DIR` | `./` (default — public_html) |
+| Secret | Value |
+|--------|-------|
+| `HOSTINGER_API_TOKEN` | hPanel → Profile → API |
+| `HOSTINGER_DOMAIN` | `paleturquoise-stork-447573.hostingersite.com` |
 
-Phir `git push` → files Hostinger par upload ho jati hain.
+`git push` → build + Hostinger Node.js par deploy.
+
+### FTP — 3 tareeqe
+
+| Tareeqa | Kaam karta hai? |
+|---------|-----------------|
+| `npm run deploy:ftp` (aap ke Mac se) | ✅ Haan |
+| GitHub cloud runner + FTP | ❌ Timeout (Hostinger block) |
+| Self-hosted runner + FTP | ✅ Haan — `deploy-self-hosted.yml` |
+| `HOSTINGER_API_TOKEN` | ✅ Best — Node.js build + start |
+
+Local FTP: `npm run deploy:ftp`  
+Self-hosted runner: GitHub → Settings → Actions → Runners → New → macOS install → Actions tab se **Deploy to Hostinger (Self-Hosted FTP)** run karein.
 
 ---
 

@@ -1,0 +1,72 @@
+# FTP deploy via self-hosted runner (aap ke PC/Mac par).
+# GitHub cloud runners se Hostinger FTP timeout hota hai; local runner se kaam karta hai.
+#
+# Setup (ek dafa):
+#   1. https://github.com/sheriweb/inventory-urdu/settings/actions/runners/new
+#   2. macOS runner install karein
+#   3. GitHub Secrets: FTP_HOST, FTP_USER, FTP_PASSWORD (pehle se hain)
+#   4. Node.js app hPanel mein ek dafa setup (ZIP upload) — FTP sirf files upload karta hai
+#
+# Note: Node.js app chalane ke liye HOSTINGER_API_TOKEN wala workflow behtar hai.
+
+name: Deploy to Hostinger (Self-Hosted FTP)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-ftp:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install & build
+        run: |
+          npm ci
+          npm run hostinger:build
+
+      - name: Prepare deploy folder
+        run: bash scripts/prepare-ftp-deploy.sh
+
+      - name: Upload via FTPS (local runner)
+        env:
+          FTP_HOST: ${{ secrets.FTP_SERVER || secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USERNAME || secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PORT: '21'
+          FTP_ROOT: .
+        run: |
+          if [ -z "$FTP_HOST" ] || [ -z "$FTP_USER" ] || [ -z "$FTP_PASSWORD" ]; then
+            echo "❌ FTP secrets missing"
+            exit 1
+          fi
+          command -v lftp >/dev/null || { echo "Install lftp: brew install lftp"; exit 1; }
+          lftp -u "$FTP_USER","$FTP_PASSWORD" "ftp://$FTP_HOST:$FTP_PORT" <<'LFTP'
+          set ftp:ssl-allow true
+          set ssl:verify-certificate no
+          set net:timeout 60
+          mirror -R --parallel=4 ./deploy-output .
+          bye
+          LFTP
+          echo "✅ FTP upload complete"
+
+      - name: Create & upload source ZIP (hPanel Node.js wizard ke liye)
+        env:
+          FTP_HOST: ${{ secrets.FTP_SERVER || secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USERNAME || secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          bash scripts/create-deploy-zip.sh
+          ZIP="$(ls -t deploy/inventory-urdu_*.zip | head -1)"
+          lftp -u "$FTP_USER","$FTP_PASSWORD" "ftp://$FTP_HOST:21" <<LFTP
+          set ftp:ssl-allow true
+          set ssl:verify-certificate no
+          put "$ZIP" -o inventory-urdu-deploy.zip
+          bye
+          LFTP
+          echo "✅ ZIP on server: inventory-urdu-deploy.zip"

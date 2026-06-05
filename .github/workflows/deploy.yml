@@ -39,37 +39,32 @@ jobs:
       - name: Prepare FTP upload folder
         run: bash scripts/prepare-ftp-deploy.sh
 
-      # Hostinger API pehle (GitHub Actions se FTP aksar timeout — API HTTPS se chalta hai)
+      # Hostinger API — GitHub Actions se FTP port 21 block hota hai; API HTTPS se chalti hai
       - name: Deploy via Hostinger API
+        id: api_deploy
         continue-on-error: true
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
           HOSTINGER_DOMAIN: ${{ secrets.HOSTINGER_DOMAIN }}
         run: |
-          if [ -z "${HOSTINGER_API_TOKEN:-}" ]; then
-            echo "HOSTINGER_API_TOKEN not set — skip API deploy."
+          if [ -z "${HOSTINGER_API_TOKEN:-}" ] || [ -z "${HOSTINGER_DOMAIN:-}" ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "HOSTINGER_API_TOKEN / HOSTINGER_DOMAIN not set — skip API deploy."
             exit 0
           fi
           bash scripts/create-deploy-zip.sh
           npm install axios tus-js-client
           node scripts/hostinger-deploy.mjs
+          echo "success=true" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy via FTP (FTPS)
-        continue-on-error: true
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER || secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME || secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          security: loose
-          timeout: 120000
-          local-dir: ./deploy-output/
-          server-dir: ./
-          dangerous-clean-slate: false
-
-      - name: Deploy result
+      - name: Verify deployment
         run: |
-          echo "Agar dono fail hon to GitHub mein HOSTINGER_API_TOKEN add karein."
-          echo "Ya hPanel → Node.js → Import Git (sab se aasaan)."
+          if [ "${{ steps.api_deploy.outputs.success }}" = "true" ]; then
+            echo "✅ Deployed via Hostinger API"
+            exit 0
+          fi
+          echo "::error::HOSTINGER_API_TOKEN set nahi — cloud FTP Hostinger par block hai (timeout)."
+          echo "::error::Fix 1: GitHub Secrets → HOSTINGER_API_TOKEN + HOSTINGER_DOMAIN"
+          echo "::error::Fix 2: Self-hosted runner → workflow deploy-self-hosted.yml"
+          echo "::error::Fix 3: hPanel → Node.js → File upload (ZIP)"
+          exit 1
