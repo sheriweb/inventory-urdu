@@ -36,6 +36,24 @@ if (!zipPath) {
 
 const headers = { Authorization: `Bearer ${token}` };
 
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const out = {};
+  for (const line of fs.readFileSync(filePath, 'utf8').split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const i = t.indexOf('=');
+    if (i < 1) continue;
+    const key = t.slice(0, i).trim();
+    let val = t.slice(i + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    out[key] = val;
+  }
+  return out;
+}
+
 async function api(method, urlPath, data) {
   const res = await axios({
     method,
@@ -93,6 +111,9 @@ async function triggerBuild(username, archiveBasename) {
   const raw = await api('get', settingsPath);
   let settings = raw?.data ?? raw;
 
+  const envFile = path.join(root, 'deploy', 'hostinger-production.env');
+  const envVars = loadEnvFile(envFile);
+
   settings = {
     ...settings,
     node_version: 20,
@@ -101,6 +122,7 @@ async function triggerBuild(username, archiveBasename) {
     start_command: 'npm run hostinger:start',
     source_type: 'archive',
     source_options: { archive_path: archiveBasename },
+    ...(Object.keys(envVars).length ? { environment_variables: envVars, env: envVars } : {}),
   };
 
   const buildPath = `api/hosting/v1/accounts/${username}/websites/${domain}/nodejs/builds`;

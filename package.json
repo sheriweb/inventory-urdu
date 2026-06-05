@@ -23,7 +23,8 @@
     "hostinger:build": "npm run build:shared && npm run db:generate -w @inventory-urdu/api && npm run build -w @inventory-urdu/api && npm run build -w @inventory-urdu/web",
     "hostinger:start": "node scripts/hostinger-combined-start.mjs",
     "deploy:ftp": "npm run hostinger:build && bash scripts/prepare-ftp-deploy.sh && bash scripts/ftp-upload-local.sh",
-    "deploy:zip": "bash scripts/create-deploy-zip.sh"
+    "deploy:zip": "bash scripts/create-deploy-zip.sh",
+    "go-live": "bash scripts/go-live.sh"
   },
   "devDependencies": {
     "prettier": "^3.4.0",
