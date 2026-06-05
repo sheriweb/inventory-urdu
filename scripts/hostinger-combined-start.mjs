@@ -40,6 +40,18 @@ function run(cmd, args, cwd, env, label) {
   return child;
 }
 
+if (process.env.RUN_DB_SETUP === '1') {
+  console.log('[hostinger] RUN_DB_SETUP=1 — pushing schema + seed…');
+  const setup = spawn('npm', ['run', 'hostinger:db:push'], { cwd: root, env: apiEnv, stdio: 'inherit' });
+  await new Promise((resolve, reject) => {
+    setup.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`db:push exit ${code}`))));
+  });
+  const seed = spawn('npm', ['run', 'hostinger:db:seed'], { cwd: root, env: apiEnv, stdio: 'inherit' });
+  await new Promise((resolve, reject) => {
+    seed.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`db:seed exit ${code}`))));
+  });
+}
+
 console.log(`[hostinger] Starting API on 127.0.0.1:${apiPort}…`);
 const api = run('node', ['dist/main'], path.join(root, 'apps/api'), apiEnv, 'api');
 
