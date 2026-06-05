@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+.turbo/
+.env
+.env.local
+deploy/secrets.env
+deploy/secrets.local.env
+*.log
+.DS_Store
+coverage/
+uploads/

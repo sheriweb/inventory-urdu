@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-progress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-enter {
+  animation: toast-slide-in 0.35s ease-out;
+}
+
+.toast-progress {
+  animation: toast-progress 3.8s linear forwards;
+}
+
+.animate-in.fade-in {
+  animation: fade-in 0.28s ease-out;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton-bar {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+:root {
+  --shop-brand: #059669;
+  --shop-brand-rgb: 5, 150, 105;
+  --background: 248 250 252;
+  --foreground: 15 23 42;
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+  --primary: 5 150 105;
+  --primary-foreground: 255 255 255;
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
+  --border: 226 232 240;
+  --sidebar: 15 23 42;
+  --sidebar-foreground: 241 245 249;
+  --radius: 0.75rem;
+}
+
+body {
+  @apply bg-slate-100/80 text-slate-900 font-urdu antialiased;
+  background-image:
+    radial-gradient(at 100% 0%, rgb(16 185 129 / 0.06) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgb(15 23 42 / 0.04) 0px, transparent 50%);
+}
+
+@layer base {
+  * {
+    @apply border-slate-200;
+  }
+
+  select,
+  input:not([type='checkbox']):not([type='radio']):not(.font-urdu),
+  textarea {
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  input.font-urdu,
+  textarea.font-urdu {
+    font-family: var(--font-urdu), 'Noto Nastaliq Urdu', serif;
+    line-height: 1.75;
+  }
+
+  select option {
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    padding: 0.5rem;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}

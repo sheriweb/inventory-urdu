@@ -1,0 +1,32 @@
+{
+  "name": "inventory-urdu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Inventory Urdu — Multi-tenant Installment (Qist) Management System",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "db:generate": "turbo run db:generate",
+    "db:push": "turbo run db:push",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "build:shared": "npm run build -w @inventory-urdu/shared",
+    "hostinger:build:api": "npm run build:shared && npm run db:generate -w @inventory-urdu/api && npm run build -w @inventory-urdu/api",
+    "hostinger:build:web": "npm run build:shared && npm run build -w @inventory-urdu/web",
+    "hostinger:db:push": "npm run db:push -w @inventory-urdu/api",
+    "hostinger:db:seed": "npm run db:seed -w @inventory-urdu/api",
+    "hostinger:build": "npm run build:shared && npm run db:generate -w @inventory-urdu/api && npm run build -w @inventory-urdu/api && npm run build -w @inventory-urdu/web",
+    "hostinger:start": "node scripts/hostinger-combined-start.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.0",
+    "turbo": "^2.4.0"
+  },
+  "engines": { "node": ">=20.0.0", "npm": ">=10.0.0" },
+  "packageManager": "npm@10.0.0"
+}

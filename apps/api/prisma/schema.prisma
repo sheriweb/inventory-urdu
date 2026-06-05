@@ -1,0 +1,510 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SHOP_OWNER
+  SHAREHOLDER
+  SALESMAN
+  RECOVERY_MAN
+  OPERATOR
+}
+
+enum StaffType {
+  SALESMAN
+  RECOVERY_MAN
+  SHAREHOLDER
+  OUTDOOR_MAN
+}
+
+enum InstallmentFrequency {
+  DAILY
+  WEEKLY
+  FIFTEEN_DAYS
+  MONTHLY
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum LeaseStatus {
+  ACTIVE
+  CLOSED
+  DEFAULTED
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+  LOAD
+  UNLOAD
+  RETURN
+}
+
+enum ClaimType {
+  SHOP
+  CUSTOMER
+}
+
+enum ExpenseGroup {
+  OFFICE
+  HOME
+  VEHICLE
+  PETTY_CASH
+}
+
+model Shop {
+  id            String         @id @default(uuid())
+  name          String
+  logoUrl       String?        @db.Text
+  phone         String?
+  mobile        String?
+  email         String?
+  address       String?        @db.Text
+  city          String?
+  description   String?        @db.Text
+  brandColor    String?        @default("#059669")
+  reminderEnabled      Boolean  @default(true)
+  reminderDaysBefore   Int      @default(2)
+  reminderMessageTemplate String? @db.Text
+  autoRoznamchaOnCollection Boolean @default(true)
+  billingPlanLabel     String?
+  monthlyFeePkr        Decimal?       @db.Decimal(12, 2)
+  billingNotes         String?        @db.Text
+  isActive      Boolean        @default(true)
+  ownerId       String         @unique
+  owner         User           @relation("ShopOwner", fields: [ownerId], references: [id])
+  users         User[]         @relation("ShopUsers")
+  areas         Area[]
+  staff         Staff[]
+  companies     Company[]
+  items         Item[]
+  customers     Customer[]
+  guarantors    Guarantor[]
+  leaseAccounts LeaseAccount[]
+  payments      Payment[]
+  stockMovements StockMovement[]
+  salesmanStock  SalesmanStock[]
+  claims         Claim[]
+  expenseAccounts ExpenseAccount[]
+  roznamchaEntries RoznamchaEntry[]
+  installmentReminderLogs InstallmentReminderLog[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("shops")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  password     String
+  name         String
+  role         UserRole
+  shopId       String?
+  shop         Shop?     @relation("ShopUsers", fields: [shopId], references: [id])
+  ownedShop    Shop?     @relation("ShopOwner")
+  isActive     Boolean   @default(true)
+  refreshToken String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([shopId])
+  @@map("users")
+}
+
+model Area {
+  id        String     @id @default(uuid())
+  shopId    String
+  shop      Shop       @relation(fields: [shopId], references: [id])
+  name      String
+  city      String?
+  isActive  Boolean    @default(true)
+  staff     Staff[]
+  customers Customer[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([shopId])
+  @@map("areas")
+}
+
+model Staff {
+  id                 String         @id @default(uuid())
+  shopId             String
+  shop               Shop           @relation(fields: [shopId], references: [id])
+  areaId             String?
+  area               Area?          @relation(fields: [areaId], references: [id])
+  name               String
+  mobile             String?
+  type               StaffType
+  isActive           Boolean        @default(true)
+  salesmanLeases     LeaseAccount[] @relation("LeaseSalesman")
+  recoveryManLeases  LeaseAccount[] @relation("LeaseRecoveryMan")
+  outdoorManLeases   LeaseAccount[] @relation("LeaseOutdoorMan")
+  salesmanStock      SalesmanStock[]
+  stockMovements     StockMovement[] @relation("StaffStockMovements")
+  claims             Claim[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([shopId])
+  @@map("staff")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  items     Item[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@map("companies")
+}
+
+model Item {
+  id           String      @id @default(uuid())
+  shopId       String
+  shop         Shop        @relation(fields: [shopId], references: [id])
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id])
+  itemCode     Int
+  name         String
+  model        String?
+  purchaseRate Decimal     @db.Decimal(12, 2)
+  saleRate     Decimal     @db.Decimal(12, 2)
+  stockQuantity Int        @default(0)
+  isActive     Boolean     @default(true)
+  leaseItems   LeaseItem[]
+  stockMovements StockMovement[]
+  salesmanStock  SalesmanStock[]
+  claims         Claim[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([shopId, itemCode])
+  @@index([shopId])
+  @@map("items")
+}
+
+model Customer {
+  id                  String         @id @default(uuid())
+  shopId              String
+  shop                Shop           @relation(fields: [shopId], references: [id])
+  areaId              String?
+  area                Area?          @relation(fields: [areaId], references: [id])
+  name                String
+  fatherOrHusbandName String?
+  caste               String?
+  profession          String?
+  mobile              String?
+  cnic                String?
+  cnicPhotoUrl        String?        @db.Text
+  cnicFrontPhotoUrl   String?        @db.Text
+  cnicBackPhotoUrl    String?        @db.Text
+  chequePhotoUrl      String?        @db.Text
+  city                String?
+  presentAddress      String?        @db.Text
+  permanentAddress    String?        @db.Text
+  bankName            String?
+  chequeNumber        String?
+  isActive            Boolean        @default(true)
+  guarantors          Guarantor[]
+  leaseAccounts       LeaseAccount[]
+  claims              Claim[]        @relation("CustomerClaims")
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([shopId])
+  @@map("customers")
+}
+
+model Guarantor {
+  id               String   @id @default(uuid())
+  shopId           String
+  shop             Shop     @relation(fields: [shopId], references: [id])
+  customerId       String
+  customer         Customer @relation(fields: [customerId], references: [id])
+  name             String
+  cnic                 String?
+  phone                String?
+  cnicFrontPhotoUrl    String?  @db.Text
+  cnicBackPhotoUrl     String?  @db.Text
+  presentAddress       String?  @db.Text
+  permanentAddress String?  @db.Text
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([customerId])
+  @@map("guarantors")
+}
+
+model LeaseAccount {
+  id                         String                 @id @default(uuid())
+  shopId                     String
+  shop                       Shop                   @relation(fields: [shopId], references: [id])
+  accountNumber              Int
+  accountDate                DateTime
+  customerId                 String
+  customer                   Customer               @relation(fields: [customerId], references: [id])
+  salesmanId                 String?
+  salesman                   Staff?                 @relation("LeaseSalesman", fields: [salesmanId], references: [id])
+  recoveryManId              String?
+  recoveryMan                Staff?                 @relation("LeaseRecoveryMan", fields: [recoveryManId], references: [id])
+  outdoorManId               String?
+  outdoorMan                 Staff?                 @relation("LeaseOutdoorMan", fields: [outdoorManId], references: [id])
+  totalAmount                Decimal                @db.Decimal(12, 2)
+  advanceAmount              Decimal                @db.Decimal(12, 2)
+  remainingBalance           Decimal                @db.Decimal(12, 2)
+  originalInstallmentAmount  Decimal                @db.Decimal(12, 2)
+  currentInstallmentAmount   Decimal                @db.Decimal(12, 2)
+  installmentCount           Int
+  frequency                  InstallmentFrequency
+  status                     LeaseStatus            @default(ACTIVE)
+  note                       String?                @db.Text
+  leaseItems                 LeaseItem[]
+  installments               InstallmentSchedule[]
+  payments                   Payment[]
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+
+  @@unique([shopId, accountNumber])
+  @@index([shopId])
+  @@index([customerId])
+  @@map("lease_accounts")
+}
+
+model LeaseItem {
+  id             String       @id @default(uuid())
+  leaseAccountId String
+  leaseAccount   LeaseAccount @relation(fields: [leaseAccountId], references: [id], onDelete: Cascade)
+  itemId         String?
+  item           Item?        @relation(fields: [itemId], references: [id])
+  itemName       String
+  rate           Decimal      @db.Decimal(12, 2)
+  quantity       Int
+  totalAmount    Decimal      @db.Decimal(12, 2)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([leaseAccountId])
+  @@map("lease_items")
+}
+
+model InstallmentSchedule {
+  id                   String            @id @default(uuid())
+  leaseAccountId       String
+  leaseAccount         LeaseAccount      @relation(fields: [leaseAccountId], references: [id], onDelete: Cascade)
+  installmentNumber    Int
+  dueDate              DateTime
+  dayName              String?
+  scheduledAmount      Decimal           @db.Decimal(12, 2)
+  paidAmount           Decimal           @default(0) @db.Decimal(12, 2)
+  status               InstallmentStatus @default(PENDING)
+  isShort              Boolean           @default(false)
+  carriedForwardAmount Decimal           @default(0) @db.Decimal(12, 2)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  payments             Payment[]
+  reminderLogs         InstallmentReminderLog[]
+
+  @@unique([leaseAccountId, installmentNumber])
+  @@index([leaseAccountId])
+  @@map("installment_schedules")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  shopId     String
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([shopId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+enum PaymentType {
+  INSTALLMENT
+  ADVANCE
+  DISCOUNT
+}
+
+model Payment {
+  id                String                @id @default(uuid())
+  shopId            String
+  shop              Shop                  @relation(fields: [shopId], references: [id])
+  leaseAccountId    String
+  leaseAccount      LeaseAccount          @relation(fields: [leaseAccountId], references: [id])
+  scheduleId        String?
+  schedule          InstallmentSchedule?  @relation(fields: [scheduleId], references: [id])
+  amount            Decimal               @db.Decimal(12, 2)
+  paymentDate       DateTime
+  collectedById     String?
+  collectedByUserId String?
+  paymentType       PaymentType
+  receiptNumber     Int
+  note              String?               @db.Text
+  createdAt         DateTime              @default(now())
+  roznamchaEntry    RoznamchaEntry?
+
+  @@unique([shopId, receiptNumber])
+  @@index([shopId])
+  @@index([leaseAccountId])
+  @@map("payments")
+}
+
+model StockMovement {
+  id           String            @id @default(uuid())
+  shopId       String
+  shop         Shop              @relation(fields: [shopId], references: [id])
+  itemId       String
+  item         Item              @relation(fields: [itemId], references: [id])
+  staffId      String?
+  staff        Staff?            @relation("StaffStockMovements", fields: [staffId], references: [id])
+  type         StockMovementType
+  quantity     Int
+  supplier     String?
+  note         String?           @db.Text
+  movementDate DateTime
+  createdAt    DateTime          @default(now())
+
+  @@index([shopId])
+  @@index([itemId])
+  @@index([staffId])
+  @@map("stock_movements")
+}
+
+model SalesmanStock {
+  id        String   @id @default(uuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  staffId   String
+  staff     Staff    @relation(fields: [staffId], references: [id])
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id])
+  quantity  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([shopId, staffId, itemId])
+  @@index([shopId])
+  @@index([staffId])
+  @@map("salesman_stock")
+}
+
+model Claim {
+  id         String    @id @default(uuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id])
+  type       ClaimType
+  itemId     String
+  item       Item      @relation(fields: [itemId], references: [id])
+  staffId    String?
+  staff      Staff?    @relation(fields: [staffId], references: [id])
+  customerId String?
+  customer   Customer? @relation("CustomerClaims", fields: [customerId], references: [id])
+  quantity   Int
+  detail     String?   @db.Text
+  imageUrl   String?
+  claimDate  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([shopId])
+  @@index([itemId])
+  @@map("claims")
+}
+
+model ExpenseAccount {
+  id        String         @id @default(uuid())
+  shopId    String
+  shop      Shop           @relation(fields: [shopId], references: [id])
+  name      String
+  group     ExpenseGroup
+  isActive  Boolean        @default(true)
+  entries   RoznamchaEntry[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([shopId])
+  @@map("expense_accounts")
+}
+
+model RoznamchaEntry {
+  id               String          @id @default(uuid())
+  shopId           String
+  shop             Shop            @relation(fields: [shopId], references: [id])
+  entryDate        DateTime
+  expenseAccountId String?
+  expenseAccount   ExpenseAccount? @relation(fields: [expenseAccountId], references: [id])
+  detail           String?         @db.Text
+  expenseAmount    Decimal         @default(0) @db.Decimal(12, 2)
+  recoveryAmount   Decimal         @default(0) @db.Decimal(12, 2)
+  balanceAfter     Decimal         @db.Decimal(12, 2)
+  operatorUserId   String?
+  paymentId        String?         @unique
+  payment          Payment?        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  createdAt        DateTime        @default(now())
+
+  @@index([shopId])
+  @@index([entryDate])
+  @@map("roznamcha_entries")
+}
+
+enum ReminderChannel {
+  WHATSAPP
+  SMS
+}
+
+model InstallmentReminderLog {
+  id               String              @id @default(uuid())
+  shopId           String
+  shop             Shop                @relation(fields: [shopId], references: [id])
+  scheduleId       String
+  schedule         InstallmentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  channel          ReminderChannel
+  reminderDueDate  DateTime
+  sentAt           DateTime            @default(now())
+
+  @@unique([scheduleId, reminderDueDate, channel])
+  @@index([shopId])
+  @@index([scheduleId])
+  @@map("installment_reminder_logs")
+}
+
+model PlatformSettings {
+  id                  String   @id @default("default")
+  smsAutoEnabled      Boolean  @default(false)
+  smsProvider         String?
+  smsSenderId         String?
+  defaultReminderDays Int      @default(2)
+  billingPlanLabel    String?  @default("Standard")
+  billingNotes        String?  @db.Text
+  defaultMonthlyFeePkr Decimal? @db.Decimal(12, 2)
+  updatedAt           DateTime @updatedAt
+
+  @@map("platform_settings")
+}
