@@ -20,6 +20,7 @@
     "hostinger:build:web": "npm run build:shared && npm run build -w @inventory-urdu/web",
     "hostinger:db:push": "npm run db:push -w @inventory-urdu/api",
     "hostinger:db:seed": "npm run db:seed -w @inventory-urdu/api",
+    "hostinger:install": "npm ci --include=dev",
     "hostinger:build": "npm run build:shared && npm run db:generate -w @inventory-urdu/api && npm run build -w @inventory-urdu/api && npm run build -w @inventory-urdu/web",
     "hostinger:start": "node scripts/hostinger-combined-start.mjs",
     "deploy:ftp": "npm run hostinger:build && bash scripts/prepare-ftp-deploy.sh && bash scripts/ftp-upload-local.sh",

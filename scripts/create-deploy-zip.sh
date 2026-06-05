@@ -7,6 +7,7 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT="$ROOT/deploy/inventory-urdu_${STAMP}.zip"
 
 cd "$ROOT"
+npm run build:shared
 zip -r "$OUT" . \
   -x "node_modules/*" \
   -x "*/node_modules/*" \
