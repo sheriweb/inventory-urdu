@@ -18,19 +18,18 @@ jobs:
 
       - name: Check GitHub secrets
         run: |
+          API="${{ secrets.HOSTINGER_API_TOKEN }}"
           SERVER="${{ secrets.FTP_SERVER }}"
           [ -z "$SERVER" ] && SERVER="${{ secrets.FTP_HOST }}"
           USER="${{ secrets.FTP_USERNAME }}"
           [ -z "$USER" ] && USER="${{ secrets.FTP_USER }}"
           PASS="${{ secrets.FTP_PASSWORD }}"
-          if [ -z "$SERVER" ] || [ -z "$USER" ] || [ -z "$PASS" ]; then
-            echo "❌ FTP secrets missing. GitHub → Settings → Secrets → Actions:"
-            echo "   FTP_SERVER (ya FTP_HOST)"
-            echo "   FTP_USERNAME (ya FTP_USER)"
-            echo "   FTP_PASSWORD"
+          if [ -n "$API" ]; then echo "✅ Hostinger API token set"; fi
+          if [ -n "$SERVER" ] && [ -n "$USER" ] && [ -n "$PASS" ]; then echo "✅ FTP secrets set"; fi
+          if [ -z "$API" ] && { [ -z "$SERVER" ] || [ -z "$USER" ] || [ -z "$PASS" ]; }; then
+            echo "❌ Add FTP secrets OR HOSTINGER_API_TOKEN"
             exit 1
           fi
-          echo "✅ FTP secrets found"
 
       - name: Install & build
         run: |
@@ -40,27 +39,37 @@ jobs:
       - name: Prepare FTP upload folder
         run: bash scripts/prepare-ftp-deploy.sh
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER || secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME || secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 21
-          local-dir: ./deploy-output/
-          server-dir: ./
-          dangerous-clean-slate: false
-
-      - name: Trigger Hostinger Node.js build (optional)
+      # Hostinger API pehle (GitHub Actions se FTP aksar timeout — API HTTPS se chalta hai)
+      - name: Deploy via Hostinger API
         continue-on-error: true
         env:
           HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
           HOSTINGER_DOMAIN: ${{ secrets.HOSTINGER_DOMAIN }}
         run: |
           if [ -z "${HOSTINGER_API_TOKEN:-}" ]; then
-            echo "HOSTINGER_API_TOKEN not set — FTP upload only."
+            echo "HOSTINGER_API_TOKEN not set — skip API deploy."
             exit 0
           fi
           bash scripts/create-deploy-zip.sh
           npm install axios tus-js-client
           node scripts/hostinger-deploy.mjs
+
+      - name: Deploy via FTP (FTPS)
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER || secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME || secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          security: loose
+          timeout: 120000
+          local-dir: ./deploy-output/
+          server-dir: ./
+          dangerous-clean-slate: false
+
+      - name: Deploy result
+        run: |
+          echo "Agar dono fail hon to GitHub mein HOSTINGER_API_TOKEN add karein."
+          echo "Ya hPanel → Node.js → Import Git (sab se aasaan)."
