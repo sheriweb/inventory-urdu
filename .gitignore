@@ -6,6 +6,8 @@ dist/
 .env.local
 deploy/secrets.env
 deploy/secrets.local.env
+deploy/hostinger-production.env
+deploy/*.zip
 *.log
 .DS_Store
 coverage/
