@@ -1,0 +1,78 @@
+# leasing-store.com — git push → build → FTP deploy (fast bundle, no node_modules).
+#
+# GitHub → Settings → Secrets → Actions — sirf yeh 2 secrets:
+#   LEASING_FTP_PASSWORD     = deploy@leasing-store.com ka password
+#   LEASING_PRODUCTION_ENV   = poori leasing-store-production.env file (multiline)
+#
+# Pehli dafa server par: cPanel → Node.js → Run NPM Install → cpanel-install.mjs → RESTART
+
+name: Deploy leasing-store.com
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-leasing-store
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Write production env
+        env:
+          LEASING_PRODUCTION_ENV: ${{ secrets.LEASING_PRODUCTION_ENV }}
+        run: |
+          if [ -z "${LEASING_PRODUCTION_ENV}" ]; then
+            echo "❌ Missing secret: LEASING_PRODUCTION_ENV"
+            exit 1
+          fi
+          mkdir -p deploy
+          printf '%s\n' "${LEASING_PRODUCTION_ENV}" > deploy/leasing-store-production.env
+
+      - name: Build
+        env:
+          NPM_CONFIG_PRODUCTION: 'false'
+        run: |
+          set -a
+          source deploy/leasing-store-production.env
+          set +a
+          export HOSTINGER_COMBINED=1
+          export INTERNAL_API_URL=http://127.0.0.1:4001
+          npm ci --no-audit --no-fund
+          npm run hostinger:build
+
+      - name: Prepare fast deploy bundle
+        run: bash scripts/prepare-fast-deploy.sh
+
+      - name: FTP upload to server
+        env:
+          FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
+        run: |
+          if [ -z "${FTP_PASS}" ]; then
+            echo "❌ Missing secret: LEASING_FTP_PASSWORD"
+            exit 1
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<'EOF'
+          set ftp:ssl-allow true
+          set ssl:verify-certificate no
+          set net:timeout 90
+          set net:max-retries 3
+          set mirror:parallel-transfer-count 6
+          cd inventory-urdu
+          rm -f .maintenance
+          lcd deploy-fast
+          mirror -R --parallel=6 .
+          bye
+          EOF
+          echo "✅ FTP deploy done — cPanel Node.js app RESTART karein (ya 1 min wait)"
