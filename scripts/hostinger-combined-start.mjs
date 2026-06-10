@@ -3,7 +3,16 @@
  * Next.js rewrites proxy /api/v1/* to the internal API.
  */
 import { spawn, execSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -72,6 +81,46 @@ function loadProductionEnv() {
 }
 
 loadProductionEnv();
+
+/**
+ * Shared hosting FTP can't upload 10k+ small files reliably, so deploy ships a single
+ * node_modules.tar.gz. Extract it on first boot (or when deps change) using the system tar.
+ */
+function ensureRuntimeModules() {
+  const tarball = path.join(root, 'node_modules.tar.gz');
+  if (!existsSync(tarball)) return;
+  const nmPath = path.join(root, 'node_modules');
+  const localNext = path.join(nmPath, 'next/dist/bin/next');
+  const stamp = path.join(nmPath, '.tarball-stamp');
+
+  let needExtract = !existsSync(localNext);
+  try {
+    const tarMtime = statSync(tarball).mtimeMs;
+    const stampMtime = existsSync(stamp) ? statSync(stamp).mtimeMs : 0;
+    if (tarMtime > stampMtime) needExtract = true;
+  } catch {
+    /* ignore */
+  }
+  if (!needExtract) return;
+
+  try {
+    mkdirSync(tmpDir, { recursive: true });
+    logLine(logPath, '[hostinger] Extracting node_modules.tar.gz (first boot / deps changed)…');
+    rmSync(nmPath, { recursive: true, force: true });
+    mkdirSync(nmPath, { recursive: true });
+    execSync(`tar -xzf ${JSON.stringify(tarball)} -C ${JSON.stringify(nmPath)}`, {
+      cwd: root,
+      stdio: 'inherit',
+    });
+    writeFileSync(stamp, new Date().toISOString());
+    logLine(logPath, '[hostinger] node_modules ready.');
+  } catch (err) {
+    logLine(logPath, `[hostinger] node_modules extract failed: ${err}`);
+  }
+}
+
+mkdirSync(path.join(root, 'tmp'), { recursive: true });
+ensureRuntimeModules();
 
 function resolveTool(...candidates) {
   for (const candidate of candidates) {

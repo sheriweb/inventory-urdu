@@ -1,4 +1,5 @@
 # leasing-store.com — git push → build → FTP deploy.
+# node_modules is shipped as ONE node_modules.tar.gz (FTP-safe), extracted on the server at boot.
 # Secrets (already set): LEASING_FTP_PASSWORD, LEASING_PRODUCTION_ENV
 
 name: Deploy leasing-store.com
@@ -17,8 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
@@ -46,27 +45,16 @@ jobs:
           npm ci --no-audit --no-fund
           npm run hostinger:build
 
-      - name: Prepare deploy bundles
+      - name: Package app + node_modules tarball
         run: |
           npm prune --omit=dev
           bash scripts/prepare-fast-deploy.sh
           bash scripts/prepare-flat-node-modules.sh
+          tar -czf deploy-fast/node_modules.tar.gz -C deploy-flat/node_modules .
+          echo "Bundle contents:"
+          du -sh deploy-fast deploy-fast/node_modules.tar.gz
 
-      - name: Detect dependency changes
-        id: deps
-        run: |
-          # Symlink-safe flat upload needed after package*.json changes or manual full deploy.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "upload_nm=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only HEAD^ HEAD | grep -qE '^(package(-lock)?\.json|apps/.+/package\.json|packages/.+/package\.json)$'; then
-            echo "upload_nm=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "upload_nm=false" >> "$GITHUB_OUTPUT"
-          fi
-          # One-time: re-upload flat nm after symlink FTP fix (remove next line after site is live).
-          echo "upload_nm=true" >> "$GITHUB_OUTPUT"
-
-      - name: FTP upload app files
+      - name: FTP upload (single mirror — app files + one tarball)
         env:
           FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
         run: |
@@ -74,46 +62,36 @@ jobs:
             echo "❌ Missing secret: LEASING_FTP_PASSWORD"
             exit 1
           fi
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp rsync
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
           WS="$GITHUB_WORKSPACE"
-          lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<EOF
-          set ftp:ssl-allow true
-          set ssl:verify-certificate no
-          set net:timeout 90
-          set net:max-retries 5
-          set mirror:parallel-transfer-count 4
-          cd inventory-urdu
-          rm -f .maintenance
-          lcd ${WS}/deploy-fast
-          mirror -R --parallel=4 .
-          bye
-          EOF
-          echo "✅ App files uploaded"
-
-      - name: FTP upload runtime node_modules
-        if: steps.deps.outputs.upload_nm == 'true'
-        env:
-          FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
-        run: |
-          WS="$GITHUB_WORKSPACE"
-          NM="${WS}/deploy-flat/node_modules"
-          echo "Upload size: $(du -sh "$NM" | cut -f1)"
           lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<EOF
           set ftp:ssl-allow true
           set ssl:verify-certificate no
           set ftp:passive-mode true
-          set net:timeout 180
+          set net:timeout 120
           set net:max-retries 10
-          set mirror:parallel-transfer-count 2
-          set cmd:fail-exit no
-          cd nodevenv/inventory-urdu/20/lib/node_modules
-          lcd ${NM}
-          mirror -R --parallel=2 next @next react react-dom
-          mirror -R --parallel=2 @prisma @nestjs
-          mirror -R --parallel=2 .
+          set net:reconnect-interval-base 5
+          set xfer:clobber on
+          set mirror:parallel-transfer-count 3
+          set cmd:fail-exit yes
+          cd inventory-urdu
+          rm -f .maintenance
+          rm -f node_modules/.tarball-stamp
+          lcd ${WS}/deploy-fast
+          mirror -R --parallel=3 .
           bye
           EOF
-          echo "✅ Runtime node_modules uploaded"
+          echo "✅ Uploaded. Server will extract node_modules.tar.gz on next boot."
 
-      - name: Done
-        run: echo "✅ Deploy complete — site should update within 1 minute"
+      - name: Trigger app restart
+        env:
+          FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
+        run: |
+          lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<'EOF'
+          set ftp:ssl-allow true
+          set ssl:verify-certificate no
+          cd inventory-urdu/tmp
+          put -O . /dev/null -o restart.txt
+          bye
+          EOF
+          echo "✅ restart.txt touched — Passenger will reboot the app"
