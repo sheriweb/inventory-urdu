@@ -48,6 +48,7 @@ jobs:
 
       - name: Prepare deploy bundles
         run: |
+          npm prune --omit=dev
           bash scripts/prepare-fast-deploy.sh
           bash scripts/prepare-flat-node-modules.sh
 
@@ -80,33 +81,39 @@ jobs:
           set ssl:verify-certificate no
           set net:timeout 90
           set net:max-retries 5
-          set mirror:parallel-transfer-count 8
+          set mirror:parallel-transfer-count 4
           cd inventory-urdu
           rm -f .maintenance
           lcd ${WS}/deploy-fast
-          mirror -R --parallel=8 .
+          mirror -R --parallel=4 .
           bye
           EOF
           echo "✅ App files uploaded"
 
-      - name: FTP upload flat node_modules
+      - name: FTP upload runtime node_modules
         if: steps.deps.outputs.upload_nm == 'true'
         env:
           FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
         run: |
           WS="$GITHUB_WORKSPACE"
+          NM="${WS}/deploy-flat/node_modules"
+          echo "Upload size: $(du -sh "$NM" | cut -f1)"
           lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<EOF
           set ftp:ssl-allow true
           set ssl:verify-certificate no
-          set net:timeout 120
-          set net:max-retries 5
-          set mirror:parallel-transfer-count 8
+          set ftp:passive-mode true
+          set net:timeout 180
+          set net:max-retries 10
+          set mirror:parallel-transfer-count 2
+          set cmd:fail-exit no
           cd nodevenv/inventory-urdu/20/lib/node_modules
-          lcd ${WS}/deploy-flat/node_modules
-          mirror -R --parallel=8 .
+          lcd ${NM}
+          mirror -R --parallel=2 next @next react react-dom
+          mirror -R --parallel=2 @prisma @nestjs
+          mirror -R --parallel=2 .
           bye
           EOF
-          echo "✅ Flat node_modules uploaded (no symlinks)"
+          echo "✅ Runtime node_modules uploaded"
 
       - name: Done
         run: echo "✅ Deploy complete — site should update within 1 minute"
