@@ -18,6 +18,7 @@ import { LeaseStatus, StaffType, type Staff } from '@inventory-urdu/shared';
 import { LEASE_STATUS_LABELS } from '@/lib/labels';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { useDebounce } from '@/hooks/use-debounce';
+import { LatePaymentScoreBadge } from '@/components/accounts/late-payment-score-badge';
 
 type AccountRow = {
   id: string;
@@ -27,7 +28,10 @@ type AccountRow = {
   remainingBalance: string | number;
   installmentCount: number;
   status: LeaseStatus;
+  overdueCount?: number;
+  latePaymentScore?: number;
   customer: { id: string; name: string; mobile?: string | null };
+  salesman?: { id: string; name: string } | null;
   recoveryMan?: { id: string; name: string } | null;
 };
 
@@ -97,7 +101,16 @@ export default function AccountsPage() {
   }, [debouncedSearch, status, recoveryManId, from, to]);
 
   const columns: DataTableColumn<AccountRow>[] = [
-    { id: 'account', header: 'کھاتہ', cell: (r) => <span className="font-bold">{r.accountNumber}</span> },
+    {
+      id: 'account',
+      header: 'کھاتہ نمبر',
+      width: '5.5rem',
+      cell: (r) => (
+        <span dir="ltr" className="font-bold text-emerald-800">
+          #{r.accountNumber}
+        </span>
+      ),
+    },
     { id: 'date', header: 'تاریخ', cell: (r) => fmtDate(r.accountDate) },
     { id: 'customer', header: 'گاہک', cell: (r) => <span className="font-urdu" title={r.customer.name}>{r.customer.name}</span> },
     { id: 'total', header: 'کل رقم', cell: (r) => <span dir="ltr">{fmtMoney(r.totalAmount)}</span> },
@@ -107,7 +120,19 @@ export default function AccountsPage() {
       cell: (r) => <span dir="ltr" className="font-medium text-emerald-800">{fmtMoney(r.remainingBalance)}</span>,
     },
     { id: 'installments', header: 'قسطیں', cell: (r) => r.installmentCount },
-    { id: 'recovery', header: 'ریکوری مین', cell: (r) => r.recoveryMan?.name ?? '—' },
+    {
+      id: 'paymentScore',
+      header: 'ادائیگی سکور',
+      cell: (r) => (
+        <LatePaymentScoreBadge
+          score={r.latePaymentScore ?? 100}
+          overdueCount={r.overdueCount ?? 0}
+          status={r.status}
+        />
+      ),
+    },
+    { id: 'salesman', header: 'سیلز مین', cell: (r) => <span className="font-urdu">{r.salesman?.name ?? '—'}</span> },
+    { id: 'recovery', header: 'ریکوری مین', cell: (r) => <span className="font-urdu">{r.recoveryMan?.name ?? '—'}</span> },
     {
       id: 'status',
       header: 'حالت',
@@ -123,7 +148,7 @@ export default function AccountsPage() {
         <Link href="/dashboard/leases/new">
           <Button size="sm" className="gap-1.5">
             <FilePlus className="h-4 w-4" />
-            نیا کھاتہ
+            نئی فروخت (قسط / نقد)
           </Button>
         </Link>
       </PageToolbar>
@@ -132,7 +157,7 @@ export default function AccountsPage() {
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
           <div className="min-w-[180px] flex-1 sm:max-w-[240px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">تلاش</label>
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="کھاتہ نمبر یا نام" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="کھاتہ نمبر (#1016) یا نام" />
           </div>
           <div className="min-w-[140px] flex-1 sm:max-w-[180px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">حالت</label>
@@ -182,7 +207,7 @@ export default function AccountsPage() {
           <Link href="/dashboard/leases/new">
             <Button type="button" size="sm" className="gap-1.5">
               <FilePlus className="h-4 w-4" />
-              نیا کھاتہ
+              نئی فروخت
             </Button>
           </Link>
         }

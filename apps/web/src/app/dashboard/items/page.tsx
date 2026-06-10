@@ -17,11 +17,20 @@ import { FormField } from '@/components/ui/form-section';
 import { UrduNameInput } from '@/components/forms/urdu-name-input';
 import { fmtMoney } from '@/lib/format';
 import { useDebounce } from '@/hooks/use-debounce';
-import type { Company, Item } from '@inventory-urdu/shared';
+import { ItemIdentifierFieldsEditor } from '@/components/forms/item-identifier-fields-editor';
+import type { Company, Item, ItemIdentifierField } from '@inventory-urdu/shared';
+import { normalizeIdentifierFields } from '@inventory-urdu/shared';
 
 type ItemRow = Item & { company?: { id: string; name: string } };
 
-const emptyForm = { companyId: '', name: '', model: '', purchaseRate: '', saleRate: '' };
+const emptyForm = {
+  companyId: '',
+  name: '',
+  model: '',
+  purchaseRate: '',
+  saleRate: '',
+  identifierFields: [] as ItemIdentifierField[],
+};
 
 export default function ItemsPage() {
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -78,6 +87,7 @@ export default function ItemsPage() {
       model: row.model ?? '',
       purchaseRate: String(row.purchaseRate),
       saleRate: String(row.saleRate),
+      identifierFields: normalizeIdentifierFields(row.identifierFields),
     });
   }
 
@@ -91,6 +101,7 @@ export default function ItemsPage() {
         model: form.model || undefined,
         purchaseRate: Number(form.purchaseRate),
         saleRate: Number(form.saleRate),
+        identifierFields: normalizeIdentifierFields(form.identifierFields),
       });
       setAddOpen(false);
       await load();
@@ -113,6 +124,7 @@ export default function ItemsPage() {
         model: form.model || undefined,
         purchaseRate: Number(form.purchaseRate),
         saleRate: Number(form.saleRate),
+        identifierFields: normalizeIdentifierFields(form.identifierFields),
       });
       setEditRow(null);
       await load();
@@ -192,6 +204,17 @@ export default function ItemsPage() {
           </div>
         ),
       },
+      {
+        title: 'آئٹم کی قسم',
+        description: 'موبائل یا موٹر سائیکل',
+        validate: () => true,
+        content: (
+          <ItemIdentifierFieldsEditor
+            value={form.identifierFields}
+            onChange={(identifierFields) => setForm({ ...form, identifierFields })}
+          />
+        ),
+      },
     ],
     [form, companies],
   );
@@ -201,6 +224,16 @@ export default function ItemsPage() {
     { id: 'name', header: 'نام', cell: (r) => <span className="font-semibold text-slate-900">{r.name}</span> },
     { id: 'company', header: 'کمپنی', cell: (r) => r.company?.name ?? '—' },
     { id: 'model', header: 'ماڈل', cell: (r) => r.model ?? '—' },
+    {
+      id: 'identifiers',
+      header: 'شناخت',
+      cell: (r) =>
+        normalizeIdentifierFields(r.identifierFields).length > 0 ? (
+          <span className="text-xs text-emerald-700">ہاں</span>
+        ) : (
+          '—'
+        ),
+    },
     { id: 'purchase', header: 'خرید', cell: (r) => <span dir="ltr">{fmtMoney(r.purchaseRate)}</span> },
     { id: 'sale', header: 'فروخت', cell: (r) => <span dir="ltr" className="font-medium text-emerald-800">{fmtMoney(r.saleRate)}</span> },
   ];

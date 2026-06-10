@@ -27,6 +27,7 @@ import {
   Scale,
   Settings,
   ListFilter,
+  ShoppingCart,
   Store,
   type LucideIcon,
 } from 'lucide-react';
@@ -106,6 +107,20 @@ export const WEB_NAV_GROUPS: NavMenuGroup[] = [
     items: [
       { label: 'آئٹمز', href: '/dashboard/items', enabled: true, icon: Package },
       { label: 'اسٹاک', href: '/dashboard/stock', enabled: true, icon: Warehouse },
+    ],
+  },
+  {
+    id: 'sales',
+    label: 'فروخت',
+    enabled: true,
+    items: [
+      {
+        label: 'نئی فروخت',
+        href: '/dashboard/leases/new',
+        enabled: true,
+        icon: ShoppingCart,
+        isActive: (pathname) => pathname === '/dashboard/leases/new',
+      },
     ],
   },
   {

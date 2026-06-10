@@ -1,12 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronDown, Plus, Search, User } from 'lucide-react';
+import { Plus, Search, User, X } from 'lucide-react';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { QuickAddModal } from '@/components/forms/quick-add-modal';
+import { useRouter, usePathname } from 'next/navigation';
 import { getRecentCustomers, rememberCustomer } from '@/lib/recent-customers';
 import { useDebounce } from '@/hooks/use-debounce';
 
@@ -36,7 +35,7 @@ export function CustomerSearchCombobox({
   onChange,
   onCustomerAdded,
   required,
-  placeholder = 'نام یا موبائل سے تلاش…',
+  placeholder = 'گاہک تلاش کریں (نام یا موبائل)',
   disabled,
 }: CustomerSearchComboboxProps) {
   const [open, setOpen] = React.useState(false);
@@ -44,10 +43,12 @@ export function CustomerSearchCombobox({
   const [results, setResults] = React.useState<CustomerOption[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [recent, setRecent] = React.useState<CustomerOption[]>([]);
-  const [addOpen, setAddOpen] = React.useState(false);
-  const [selectedLabel, setSelectedLabel] = React.useState('');
+  const [selected, setSelected] = React.useState<CustomerOption | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
   const debouncedQ = useDebounce(query, 280);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     setRecent(getRecentCustomers());
@@ -55,19 +56,33 @@ export function CustomerSearchCombobox({
 
   React.useEffect(() => {
     if (!value) {
-      setSelectedLabel('');
+      setSelected(null);
       return;
     }
+    if (selected?.id === value) return;
     const fromRecent = recent.find((c) => c.id === value);
     if (fromRecent) {
-      setSelectedLabel(formatLabel(fromRecent));
+      setSelected(fromRecent);
       return;
     }
     const fromResults = results.find((c) => c.id === value);
     if (fromResults) {
-      setSelectedLabel(formatLabel(fromResults));
+      setSelected(fromResults);
+      return;
     }
-  }, [value, recent, results]);
+    let active = true;
+    (async () => {
+      try {
+        const { data } = await api.get(`/customers/${value}`);
+        if (active && data.data) setSelected(data.data as CustomerOption);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [value, recent, results, selected?.id]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -79,7 +94,7 @@ export function CustomerSearchCombobox({
         if (debouncedQ.trim()) params.q = debouncedQ.trim();
         const { data } = await api.get('/customers', { params });
         if (!active) return;
-        setResults(data.data as CustomerOption[]);
+        setResults(Array.isArray(data.data) ? (data.data as CustomerOption[]) : []);
       } catch {
         if (active) setResults([]);
       } finally {
@@ -95,19 +110,28 @@ export function CustomerSearchCombobox({
     function onDocClick(e: MouseEvent) {
       if (!rootRef.current?.contains(e.target as Node)) {
         setOpen(false);
+        if (selected) setQuery('');
       }
     }
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, []);
+  }, [selected]);
 
   function selectCustomer(customer: CustomerOption) {
     rememberCustomer(customer);
     setRecent(getRecentCustomers());
-    setSelectedLabel(formatLabel(customer));
+    setSelected(customer);
     onChange(customer.id);
-    setOpen(false);
     setQuery('');
+    setOpen(false);
+  }
+
+  function clearSelection() {
+    setSelected(null);
+    onChange('');
+    setQuery('');
+    setOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   const recentFiltered = recent.filter((c) => {
@@ -124,63 +148,92 @@ export function CustomerSearchCombobox({
     ? results
     : [...recentFiltered, ...results.filter((r) => !recentFiltered.some((x) => x.id === r.id))].slice(0, 20);
 
+  const showDropdown = open && !disabled;
+
   return (
     <>
-      <div ref={rootRef} className="relative">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen((o) => !o)}
-          className={cn(
-            'form-control-input flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm shadow-sm',
-            'focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30',
-            disabled && 'cursor-not-allowed opacity-50',
-          )}
-        >
-          <span className={cn('truncate font-urdu text-base', !selectedLabel && 'font-sans text-slate-400')}>
-            {selectedLabel || placeholder}
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
-        </button>
-        <input type="hidden" value={value} required={required} />
+      <div ref={rootRef} className="relative min-w-0 w-full max-w-full">
+        {selected && !open ? (
+          <div
+            className={cn(
+              'box-border flex h-11 w-full max-w-full items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50/50 px-3 text-sm shadow-sm',
+              disabled && 'cursor-not-allowed opacity-50',
+            )}
+          >
+            <User className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="min-w-0 flex-1 truncate font-urdu text-base text-slate-900">{formatLabel(selected)}</span>
+            {!disabled ? (
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-white hover:text-slate-600"
+                aria-label="گاہک بدلیں"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="relative min-w-0 w-full">
+            <Search className="pointer-events-none absolute end-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={inputRef}
+              type="text"
+              disabled={disabled}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => setOpen(true)}
+              placeholder={placeholder}
+              dir="auto"
+              className={cn(
+                'box-border h-11 w-full max-w-full rounded-lg border border-slate-300 bg-white py-2 ps-3 pe-10 text-sm text-slate-900 shadow-sm',
+                'font-sans placeholder:text-slate-400 focus-visible:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30',
+                disabled && 'cursor-not-allowed opacity-50',
+              )}
+              autoComplete="off"
+            />
+          </div>
+        )}
 
-        {open ? (
-          <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-900/5">
-            <div className="border-b border-slate-100 p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="نام، موبائل…"
-                  className="pr-9"
-                  autoFocus
-                />
-              </div>
-            </div>
+        <input type="hidden" name="customerId" value={value} required={required} />
 
+        {showDropdown ? (
+          <div className="absolute inset-x-0 z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-900/5">
             {!debouncedQ.trim() && recentFiltered.length > 0 ? (
-              <p className="px-3 pt-2 text-[11px] font-medium text-slate-400">حالیہ / اکثر استعمال</p>
+              <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-medium text-slate-400">حالیہ گاہک</p>
             ) : null}
 
-            <ul className="max-h-56 overflow-y-auto py-1">
+            <ul className="max-h-52 overflow-y-auto py-1">
               {loading ? (
                 <li className="px-3 py-3 text-center text-sm text-slate-500">تلاش…</li>
               ) : listItems.length === 0 ? (
-                <li className="px-3 py-3 text-center text-sm text-slate-500">کوئی گاہک نہیں ملا</li>
+                <li className="px-3 py-3 text-center text-sm text-slate-500">
+                  {debouncedQ.trim() ? 'کوئی گاہک نہیں ملا' : 'نام یا موبائل لکھیں'}
+                </li>
               ) : (
                 listItems.map((c) => (
                   <li key={c.id}>
                     <button
                       type="button"
                       className={cn(
-                        'flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm hover:bg-emerald-50',
+                        'flex w-full items-center gap-2.5 px-3 py-2.5 text-start text-sm transition hover:bg-emerald-50',
                         value === c.id && 'bg-emerald-50/80',
                       )}
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => selectCustomer(c)}
                     >
                       <User className="h-4 w-4 shrink-0 text-slate-400" />
-                      <span className="min-w-0 flex-1 truncate font-urdu">{formatLabel(c)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-urdu text-base text-slate-900">{c.name}</span>
+                        {c.mobile ? (
+                          <span className="block truncate font-sans text-xs text-slate-500" dir="ltr">
+                            {c.mobile}
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                   </li>
                 ))
@@ -188,7 +241,19 @@ export function CustomerSearchCombobox({
             </ul>
 
             <div className="border-t border-slate-100 p-2">
-              <Button type="button" variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setAddOpen(true)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setOpen(false);
+                  router.push(
+                    `/dashboard/customers/new?returnTo=${encodeURIComponent(pathname)}`,
+                  );
+                }}
+              >
                 <Plus className="h-4 w-4" />
                 نیا گاہک شامل کریں
               </Button>
@@ -197,16 +262,6 @@ export function CustomerSearchCombobox({
         ) : null}
       </div>
 
-      <QuickAddModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        entity="customer"
-        onCreated={(record) => {
-          const customer = record as CustomerOption;
-          onCustomerAdded?.(customer);
-          selectCustomer(customer);
-        }}
-      />
     </>
   );
 }

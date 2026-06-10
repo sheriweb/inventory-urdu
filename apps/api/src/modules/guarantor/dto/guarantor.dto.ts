@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateGuarantorDto {
   @IsString()
@@ -7,11 +7,24 @@ export class CreateGuarantorDto {
 
   @IsOptional()
   @IsString()
+  fatherOrHusbandName?: string;
+
+  @IsOptional()
+  @IsString()
+  caste?: string;
+
+  @IsOptional()
+  @IsString()
   cnic?: string;
 
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  additionalMobiles?: string[];
 
   @IsOptional()
   @IsString()
@@ -28,6 +41,10 @@ export class CreateGuarantorDto {
   @IsOptional()
   @IsString()
   cnicBackPhotoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }
 
 export class UpdateGuarantorDto {
@@ -38,11 +55,24 @@ export class UpdateGuarantorDto {
 
   @IsOptional()
   @IsString()
+  fatherOrHusbandName?: string;
+
+  @IsOptional()
+  @IsString()
+  caste?: string;
+
+  @IsOptional()
+  @IsString()
   cnic?: string;
 
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  additionalMobiles?: string[];
 
   @IsOptional()
   @IsString()
@@ -59,6 +89,10 @@ export class UpdateGuarantorDto {
   @IsOptional()
   @IsString()
   cnicBackPhotoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 
   @IsOptional()
   @IsBoolean()

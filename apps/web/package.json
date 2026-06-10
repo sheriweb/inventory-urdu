@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001 --turbo",
+    "dev": "INTERNAL_API_URL=http://127.0.0.1:4001 NEXT_PUBLIC_CLIENT_MONITORING=1 next dev -p 3001 --turbo",
     "dev:webpack": "next dev -p 3001",
     "dev:clean": "rm -rf .next node_modules/.cache && next dev -p 3001",
     "build": "next build",
@@ -13,7 +13,8 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
-    "@inventory-urdu/shared": "*",
+    "@inventory-urdu/shared": "file:../../packages/shared",
+    "@zxing/browser": "^0.1.5",
     "axios": "^1.7.0",
     "clsx": "^2.1.1",
     "js-cookie": "^3.0.5",

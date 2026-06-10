@@ -192,6 +192,7 @@ model Item {
   purchaseRate Decimal     @db.Decimal(12, 2)
   saleRate     Decimal     @db.Decimal(12, 2)
   stockQuantity Int        @default(0)
+  identifierFields Json?
   isActive     Boolean     @default(true)
   leaseItems   LeaseItem[]
   stockMovements StockMovement[]
@@ -216,8 +217,10 @@ model Customer {
   caste               String?
   profession          String?
   mobile              String?
+  additionalMobiles   Json?
   cnic                String?
   cnicPhotoUrl        String?        @db.Text
+  photoUrl            String?        @db.Text
   cnicFrontPhotoUrl   String?        @db.Text
   cnicBackPhotoUrl    String?        @db.Text
   chequePhotoUrl      String?        @db.Text
@@ -243,11 +246,15 @@ model Guarantor {
   shop             Shop     @relation(fields: [shopId], references: [id])
   customerId       String
   customer         Customer @relation(fields: [customerId], references: [id])
-  name             String
+  name                 String
+  fatherOrHusbandName  String?
+  caste                String?
   cnic                 String?
   phone                String?
+  additionalMobiles    Json?
   cnicFrontPhotoUrl    String?  @db.Text
   cnicBackPhotoUrl     String?  @db.Text
+  photoUrl             String?  @db.Text
   presentAddress       String?  @db.Text
   permanentAddress String?  @db.Text
   isActive         Boolean  @default(true)
@@ -304,6 +311,7 @@ model LeaseItem {
   rate           Decimal      @db.Decimal(12, 2)
   quantity       Int
   totalAmount    Decimal      @db.Decimal(12, 2)
+  unitDetails    Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

@@ -7,8 +7,12 @@ dist/
 deploy/secrets.env
 deploy/secrets.local.env
 deploy/hostinger-production.env
+deploy/leasing-store-production.env
+deploy/leasing-store-deploy-key
+deploy/leasing-store-deploy-key.pub
 deploy/*.zip
 deploy-output/
+.demo/
 *.log
 .DS_Store
 coverage/

@@ -1,3 +1,5 @@
+import type { ItemIdentifierField, LeaseItemUnitDetail } from './item-identifiers';
+
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   SHOP_OWNER = 'SHOP_OWNER',
@@ -91,6 +93,52 @@ export interface Company {
   updatedAt: string;
 }
 
+export type {
+  ItemIdentifierField,
+  ItemIdentifierPresetKey,
+  ItemSaleType,
+  LeaseItemDetailField,
+  LeaseItemUnitDetail,
+  SaleDetailFieldRow,
+  SaleUnitDetailRows,
+} from './item-identifiers';
+export {
+  ITEM_IDENTIFIER_PRESETS,
+  ITEM_SALE_TYPE_LABELS,
+  buildEmptyUnitDetails,
+  buildUnitDetailRows,
+  buildUnitDetailRowsFromFields,
+  catalogFieldsToSeedLabels,
+  fieldsForSaleType,
+  getDisplayFieldsFromUnit,
+  identifierFieldsForSaleType,
+  leaseUnitDetailsToRows,
+  newSaleDetailRow,
+  normalizeIdentifierFields,
+  resizeUnitDetailRows,
+  resizeUnitDetailRowsWithFields,
+  resizeUnitDetails,
+  saleTypeFromIdentifierFields,
+  unitDetailRowsToLeaseFormat,
+  validateSaleDetailRows,
+  validateUnitDetails,
+} from './item-identifiers';
+export {
+  addFrequencyToDate,
+  buildAutoInstallmentSchedule,
+  buildDraftInstallmentRows,
+  countFromPerInstallment,
+  deriveInstallmentPlan,
+  MAX_INSTALLMENT_COUNT,
+  splitEqualInstallments,
+  formatScheduleDate,
+  renumberDraftInstallments,
+  sumDraftInstallmentAmounts,
+  urduDayName,
+  type DraftInstallmentRow,
+  type ScheduleFrequency,
+} from './installment-schedule';
+
 export interface Item {
   id: string;
   shopId: string;
@@ -101,6 +149,7 @@ export interface Item {
   purchaseRate: string;
   saleRate: string;
   stockQuantity?: number;
+  identifierFields?: ItemIdentifierField[] | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -115,8 +164,10 @@ export interface Customer {
   caste?: string | null;
   profession?: string | null;
   mobile?: string | null;
+  additionalMobiles?: string[] | null;
   cnic?: string | null;
   cnicPhotoUrl?: string | null;
+  photoUrl?: string | null;
   cnicFrontPhotoUrl?: string | null;
   cnicBackPhotoUrl?: string | null;
   chequePhotoUrl?: string | null;
@@ -135,10 +186,14 @@ export interface Guarantor {
   shopId: string;
   customerId: string;
   name: string;
+  fatherOrHusbandName?: string | null;
+  caste?: string | null;
   cnic?: string | null;
   phone?: string | null;
+  additionalMobiles?: string[] | null;
   cnicFrontPhotoUrl?: string | null;
   cnicBackPhotoUrl?: string | null;
+  photoUrl?: string | null;
   presentAddress?: string | null;
   permanentAddress?: string | null;
   isActive: boolean;
@@ -179,6 +234,7 @@ export interface LeaseItem {
   rate: string;
   quantity: number;
   totalAmount: string;
+  unitDetails?: LeaseItemUnitDetail[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -227,6 +283,12 @@ export interface CreateLeaseItemDto {
   itemName: string;
   rate: number;
   quantity: number;
+  unitDetails?: LeaseItemUnitDetail[];
+}
+
+export interface CreateLeaseInstallmentRowDto {
+  dueDate: string;
+  scheduledAmount: number;
 }
 
 export interface CreateLeaseAccountDto {
@@ -236,8 +298,13 @@ export interface CreateLeaseAccountDto {
   recoveryManId?: string;
   outdoorManId?: string;
   advanceAmount: number;
-  installmentAmount: number;
+  /** خودکار شیڈول — جب installments نہ بھیجیں */
+  installmentAmount?: number;
   frequency: InstallmentFrequency;
+  /** دستی قسط شیڈول — تاریخ اور رقم قابل تبدیل */
+  installments?: CreateLeaseInstallmentRowDto[];
   note?: string;
   items: CreateLeaseItemDto[];
+  accountNumber?: number;
+  receiptNumber?: number;
 }

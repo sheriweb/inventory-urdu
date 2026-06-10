@@ -5,22 +5,35 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { romanToUrdu } from '@/lib/roman-to-urdu';
+import { VoiceInputButton } from '@/components/forms/voice-input-button';
+import { useSpeechInput } from '@/hooks/use-speech-input';
+import { notify } from '@/lib/notify';
 
 type UrduNameInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: string;
   onChange: (value: string) => void;
   showRomanHelper?: boolean;
+  showVoice?: boolean;
 };
 
 export function UrduNameInput({
   value,
   onChange,
   showRomanHelper = true,
+  showVoice = true,
   className,
+  disabled,
   ...props
 }: UrduNameInputProps) {
   const [roman, setRoman] = React.useState('');
   const preview = React.useMemo(() => romanToUrdu(roman), [roman]);
+  const compact = Boolean(className?.includes('h-8'));
+
+  const speech = useSpeechInput({
+    mode: 'roman-urdu',
+    onResult: (text) => onChange(text),
+    onError: (msg) => notify.error(msg),
+  });
 
   function applyPreview() {
     if (preview.trim()) {
@@ -31,12 +44,25 @@ export function UrduNameInput({
 
   return (
     <div className="space-y-2">
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn('font-urdu text-base leading-8', className)}
-        {...props}
-      />
+      <div className="flex items-stretch gap-2">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className={cn('min-w-0 flex-1 font-urdu text-base leading-8', className)}
+          {...props}
+        />
+        {showVoice && speech.supported ? (
+          <VoiceInputButton
+            listening={speech.listening}
+            supported={speech.supported}
+            disabled={disabled}
+            compact={compact}
+            title="نام بولیں (رومن)"
+            onClick={speech.toggle}
+          />
+        ) : null}
+      </div>
       {showRomanHelper ? (
         <div className="rounded-lg border border-dashed border-emerald-200/80 bg-emerald-50/40 p-2.5">
           <p className="mb-1.5 text-xs text-slate-500">رومن سے اردو (مفت — انٹرنیٹ نہیں چاہیے)</p>

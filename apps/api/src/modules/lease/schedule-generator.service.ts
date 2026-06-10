@@ -67,10 +67,16 @@ export class ScheduleGeneratorService {
       throw new Error('Advance amount cannot exceed total amount');
     }
 
+    const MAX_INSTALLMENTS = 480;
     const installments: GeneratedInstallment[] = [];
     let installmentNumber = 1;
 
     while (remaining > 0) {
+      if (installmentNumber > MAX_INSTALLMENTS) {
+        throw new Error(
+          `Installment amount is too small — would create more than ${MAX_INSTALLMENTS} installments. Use fewer installments or a higher per-installment amount.`,
+        );
+      }
       const scheduledAmount =
         remaining >= installmentAmount ? installmentAmount : roundMoney(remaining);
       const isShort = scheduledAmount < installmentAmount;
@@ -92,5 +98,36 @@ export class ScheduleGeneratorService {
     }
 
     return installments;
+  }
+
+  fromCustom(
+    rows: { dueDate: string; scheduledAmount: number }[],
+    accountDate: Date,
+  ): GeneratedInstallment[] {
+    if (!rows.length) {
+      throw new Error('At least one installment is required');
+    }
+
+    return rows.map((row, index) => {
+      const dueDate = new Date(row.dueDate);
+      if (Number.isNaN(dueDate.getTime())) {
+        throw new Error(`Invalid due date for installment ${index + 1}`);
+      }
+      const scheduledAmount = roundMoney(row.scheduledAmount);
+      if (scheduledAmount <= 0) {
+        throw new Error(`Installment ${index + 1} amount must be greater than zero`);
+      }
+
+      return {
+        installmentNumber: index + 1,
+        dueDate,
+        dayName: DAY_NAMES[dueDate.getDay()],
+        scheduledAmount,
+        paidAmount: 0,
+        status: InstallmentStatus.PENDING,
+        isShort: false,
+        carriedForwardAmount: 0,
+      };
+    });
   }
 }

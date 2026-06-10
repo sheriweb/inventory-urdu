@@ -4,6 +4,88 @@ import { seedDemoData } from './seed-demo';
 
 const prisma = new PrismaClient();
 
+const DEMO_SHOPS = [
+  {
+    email: 'shop1@inventory.local',
+    password: 'Shop1Demo!',
+    ownerName: 'علی احمد',
+    shopName: 'الفا الیکٹرونکس',
+    phone: '04235551234',
+    mobile: '03001112233',
+    city: 'لاہور',
+    address: 'مین بازار، لاہور',
+    billingPlanLabel: 'Standard',
+    monthlyFeePkr: 5000,
+    demoOptions: { variant: 1, accountNumberOffset: 0, cityLabel: 'لاہور' },
+  },
+  {
+    email: 'shop2@inventory.local',
+    password: 'Shop2Demo!',
+    ownerName: 'حسن رضا',
+    shopName: 'بیتا ہوم اپلائنسز',
+    phone: '0514445566',
+    mobile: '03004445566',
+    city: 'راولپنڈی',
+    address: 'سadar بازار، راولپنڈی',
+    billingPlanLabel: 'Premium',
+    monthlyFeePkr: 8000,
+    demoOptions: { variant: 2, accountNumberOffset: 0, cityLabel: 'راولپنڈی' },
+  },
+] as const;
+
+async function upsertDemoShop(spec: (typeof DEMO_SHOPS)[number]) {
+  const hash = await bcrypt.hash(spec.password, 12);
+
+  const owner = await prisma.user.upsert({
+    where: { email: spec.email },
+    update: {
+      password: hash,
+      name: spec.ownerName,
+      role: UserRole.SHOP_OWNER,
+      isActive: true,
+    },
+    create: {
+      email: spec.email,
+      password: hash,
+      name: spec.ownerName,
+      role: UserRole.SHOP_OWNER,
+      isActive: true,
+    },
+  });
+
+  const shop = await prisma.shop.upsert({
+    where: { ownerId: owner.id },
+    update: {
+      name: spec.shopName,
+      phone: spec.phone,
+      mobile: spec.mobile,
+      city: spec.city,
+      address: spec.address,
+      billingPlanLabel: spec.billingPlanLabel,
+      monthlyFeePkr: spec.monthlyFeePkr,
+      isActive: true,
+    },
+    create: {
+      name: spec.shopName,
+      phone: spec.phone,
+      mobile: spec.mobile,
+      city: spec.city,
+      address: spec.address,
+      billingPlanLabel: spec.billingPlanLabel,
+      monthlyFeePkr: spec.monthlyFeePkr,
+      ownerId: owner.id,
+      users: { connect: { id: owner.id } },
+    },
+  });
+
+  await prisma.user.update({
+    where: { id: owner.id },
+    data: { shopId: shop.id },
+  });
+
+  return { shop, owner };
+}
+
 async function main() {
   const email = process.env.SUPER_ADMIN_EMAIL;
   const password = process.env.SUPER_ADMIN_PASSWORD;
@@ -35,51 +117,18 @@ async function main() {
 
   console.log(`Super admin ready: ${email}`);
 
-  const shopOwnerEmail = 'shop@inventory.local';
-  const shopOwnerPassword = 'Shop123!';
-  const shopOwnerName = 'Shop Owner';
-  const shopName = 'ٹیسٹ دکان';
-  const shopOwnerHash = await bcrypt.hash(shopOwnerPassword, 12);
-
-  const shopOwner = await prisma.user.upsert({
-    where: { email: shopOwnerEmail },
-    update: {
-      password: shopOwnerHash,
-      name: shopOwnerName,
-      role: UserRole.SHOP_OWNER,
-      isActive: true,
-    },
-    create: {
-      email: shopOwnerEmail,
-      password: shopOwnerHash,
-      name: shopOwnerName,
-      role: UserRole.SHOP_OWNER,
-      isActive: true,
-    },
-  });
-
-  const shop = await prisma.shop.upsert({
-    where: { ownerId: shopOwner.id },
-    update: {
-      name: shopName,
-      isActive: true,
-    },
-    create: {
-      name: shopName,
-      ownerId: shopOwner.id,
-      users: { connect: { id: shopOwner.id } },
-    },
-  });
-
-  await prisma.user.update({
-    where: { id: shopOwner.id },
-    data: { shopId: shop.id },
-  });
-
-  console.log(`Demo shop ready: ${shopName} (${shopOwnerEmail})`);
-
   const forceDemo = process.env.FORCE_DEMO_SEED === '1';
-  await seedDemoData(prisma, shop.id, shopOwner.id, forceDemo);
+
+  for (const spec of DEMO_SHOPS) {
+    const { shop, owner } = await upsertDemoShop(spec);
+    console.log(`Demo shop ready: ${spec.shopName} (${spec.email} / ${spec.password})`);
+    await seedDemoData(prisma, shop.id, owner.id, forceDemo, spec.demoOptions);
+  }
+
+  console.log('\n--- Login credentials ---');
+  for (const spec of DEMO_SHOPS) {
+    console.log(`${spec.shopName}: ${spec.email} / ${spec.password}`);
+  }
 }
 
 main()

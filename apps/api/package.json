@@ -18,7 +18,7 @@
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"
   },
   "dependencies": {
-    "@inventory-urdu/shared": "*",
+    "@inventory-urdu/shared": "file:../../packages/shared",
     "@nestjs/common": "^10.4.0",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.0",

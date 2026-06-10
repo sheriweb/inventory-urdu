@@ -16,9 +16,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TablePagination } from '@/components/ui/table-pagination';
 import { useTablePagination } from '@/hooks/use-table-pagination';
 import { PhoneActions } from '@/components/ui/phone-actions';
+import { LeaseWhatsAppActions } from '@/components/leases/lease-whatsapp-actions';
+import { LeaseItemUnitDetails } from '@/components/leases/lease-item-unit-details';
+import { InstallmentDetailSplitView } from '@/components/leases/installment-detail-split-view';
 import { findNextDueInstallment, owedOnInstallment } from '@/lib/lease-installments';
 import { InstallmentFrequency, InstallmentStatus, LeaseStatus } from '@inventory-urdu/shared';
 import { LEASE_STATUS_LABELS } from '@/lib/labels';
+import { useNavHistory } from '@/components/layout/nav-history-context';
 
 const FREQUENCY_LABELS: Record<InstallmentFrequency, string> = {
   [InstallmentFrequency.DAILY]: 'روزانہ',
@@ -57,7 +61,13 @@ type LeaseDetail = {
     rate: string | number;
     quantity: number;
     totalAmount: string | number;
-    item?: { id: string; name: string; itemCode: number } | null;
+    unitDetails?: import('@inventory-urdu/shared').LeaseItemUnitDetail[] | null;
+    item?: {
+      id: string;
+      name: string;
+      itemCode: number;
+      identifierFields?: import('@inventory-urdu/shared').ItemIdentifierField[] | null;
+    } | null;
   }[];
   installments: {
     id: string;
@@ -68,6 +78,15 @@ type LeaseDetail = {
     paidAmount: string | number;
     status: InstallmentStatus;
     isShort: boolean;
+  }[];
+  payments?: {
+    id: string;
+    amount: string | number;
+    paymentDate: string;
+    paymentType: 'INSTALLMENT' | 'ADVANCE' | 'DISCOUNT';
+    receiptNumber: number;
+    note?: string | null;
+    schedule?: { installmentNumber: number } | null;
   }[];
 };
 
@@ -128,6 +147,7 @@ export default function LeaseDetailPage() {
 
   const itemsPagination = useTablePagination(lease?.leaseItems.length ?? 0, 10, [id]);
   const installmentsPagination = useTablePagination(lease?.installments.length ?? 0, 10, [id]);
+  const { setTabTitle } = useNavHistory();
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -147,6 +167,11 @@ export default function LeaseDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!lease) return;
+    setTabTitle(`کھاتہ #${lease.accountNumber} — ${lease.customer.name}`);
+  }, [lease, setTabTitle]);
 
   const nextDue = useMemo(
     () => (lease ? findNextDueInstallment(lease.installments) : null),
@@ -325,9 +350,19 @@ export default function LeaseDetailPage() {
                   <span className="font-medium text-slate-900">{lease.customer.name}</span>
                 </p>
                 {lease.customer.mobile ? (
-                  <p>
+                  <p className="flex flex-wrap items-center gap-2">
                     <span className="text-slate-500">موبائل: </span>
                     <PhoneActions mobile={lease.customer.mobile} />
+                    <LeaseWhatsAppActions
+                      accountNumber={lease.accountNumber}
+                      accountDate={lease.accountDate}
+                      totalAmount={lease.totalAmount}
+                      advanceAmount={lease.advanceAmount}
+                      customerName={lease.customer.name}
+                      customerMobile={lease.customer.mobile}
+                      installments={lease.installments}
+                      payments={lease.payments ?? []}
+                    />
                   </p>
                 ) : null}
                 {lease.customer.cnic ? (
@@ -387,7 +422,8 @@ export default function LeaseDetailPage() {
                   {itemsPagination.pageSlice(lease.leaseItems).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell className="font-medium font-urdu" title={row.itemName}>
-                        {row.itemName}
+                        <div>{row.itemName}</div>
+                        <LeaseItemUnitDetails itemName={row.itemName} unitDetails={row.unitDetails} />
                       </TableCell>
                       <TableCell>{fmtMoney(row.rate)}</TableCell>
                       <TableCell>{row.quantity}</TableCell>
@@ -408,101 +444,101 @@ export default function LeaseDetailPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">قسطوں کا شیڈول</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4 py-3">
+              <CardTitle className="text-base">قسطوں کی تفصیل</CardTitle>
               <Badge variant="default">{lease.installmentCount} قسطیں</Badge>
             </CardHeader>
-            <CardContent className="p-0">
-              <Table className="min-w-0">
-                <colgroup>
-                  <col style={{ width: '2.75rem' }} />
-                  <col style={{ width: '26%' }} />
-                  <col style={{ width: '14%' }} />
-                  <col style={{ width: '14%' }} />
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '22%' }} />
-                </colgroup>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="px-2">#</TableHead>
-                    <TableHead>تاریخ</TableHead>
-                    <TableHead className="px-2">اصل قسط</TableHead>
-                    <TableHead className="px-2">ادائیگی</TableHead>
-                    <TableHead className="px-2">حالت</TableHead>
-                    <TableHead className="whitespace-normal px-2 text-[11px] leading-5">ادائیگی درج کریں</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {installmentsPagination.pageSlice(lease.installments).map((inst) => (
-                    <TableRow key={inst.id} className={inst.isShort ? 'bg-amber-50/50' : undefined}>
-                      <TableCell className="px-2">{inst.installmentNumber}</TableCell>
-                      <TableCell className="min-w-0">
-                        <div className="leading-snug">
-                          <div className="text-sm">{fmtDate(inst.dueDate)}</div>
-                          {inst.dayName ? (
-                            <div className="truncate text-[11px] text-slate-400" dir="ltr">
-                              {inst.dayName}
-                            </div>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-2 font-medium">{fmtMoney(inst.scheduledAmount)}</TableCell>
-                      <TableCell className="px-2">{fmtMoney(inst.paidAmount)}</TableCell>
-                      <TableCell className="px-2">
-                        <div className="flex flex-wrap items-center gap-1">
-                          <Badge variant={statusVariant(inst.status)}>{STATUS_LABELS[inst.status]}</Badge>
-                          {inst.isShort ? <Badge variant="warning">شارٹ</Badge> : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-2 py-2">
-                        <div className="flex min-w-0 flex-col gap-1.5">
-                          <Input
-                            type="number"
-                            min={0}
-                            step="any"
-                            placeholder="رقم"
-                            className="h-9 w-full min-w-0"
-                            value={payAmounts[inst.id] ?? ''}
-                            onChange={(e) =>
-                              setPayAmounts((p) => ({ ...p, [inst.id]: e.target.value }))
-                            }
-                          />
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8 w-full shrink-0 px-2 text-xs"
-                            disabled={payingId === inst.id}
-                            onClick={() => submitPay(inst.id)}
-                          >
-                            درج کریں
-                          </Button>
-                          {payMessage[inst.id] ? (
-                            <span className="text-[11px] leading-snug text-slate-500">{payMessage[inst.id]}</span>
-                          ) : null}
-                          {lastPaymentBySchedule[inst.id] ? (
-                            <Link
-                              href={`/dashboard/print/receipt/${lastPaymentBySchedule[inst.id].id}?auto=1`}
-                              target="_blank"
-                              className="inline-flex h-7 items-center gap-1 rounded-md bg-emerald-600 px-2 text-[11px] font-medium text-white hover:bg-emerald-700"
-                            >
-                              <Printer className="h-3 w-3" />
-                              رسید
-                            </Link>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <TablePagination
-                totalItems={lease.installments.length}
-                start={installmentsPagination.start}
-                end={installmentsPagination.end}
-                safePage={installmentsPagination.safePage}
-                totalPages={installmentsPagination.totalPages}
-                onPageChange={installmentsPagination.setPage}
+            <CardContent className="space-y-4 p-4 pt-0">
+              <InstallmentDetailSplitView
+                accountDate={lease.accountDate}
+                totalAmount={lease.totalAmount}
+                advanceAmount={lease.advanceAmount}
+                remainingBalance={lease.remainingBalance}
+                installments={lease.installments}
+                payments={lease.payments ?? []}
               />
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                <p className="mb-2 text-xs font-semibold text-slate-700">قسط وصولی درج کریں</p>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[520px] text-xs">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="px-2">#</TableHead>
+                        <TableHead>تاریخ</TableHead>
+                        <TableHead className="px-2">اصل قسط</TableHead>
+                        <TableHead className="px-2">بقایا</TableHead>
+                        <TableHead className="px-2">حالت</TableHead>
+                        <TableHead className="px-2">وصولی</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {installmentsPagination.pageSlice(lease.installments).map((inst) => (
+                        <TableRow key={inst.id} className={inst.isShort ? 'bg-amber-50/50' : undefined}>
+                          <TableCell className="px-2">{inst.installmentNumber}</TableCell>
+                          <TableCell dir="ltr" className="whitespace-nowrap text-xs">
+                            {fmtDate(inst.dueDate)}
+                          </TableCell>
+                          <TableCell className="px-2 font-medium" dir="ltr">
+                            {fmtMoney(inst.scheduledAmount)}
+                          </TableCell>
+                          <TableCell className="px-2 font-medium text-red-600" dir="ltr">
+                            {fmtMoney(owedOnInstallment(inst))}
+                          </TableCell>
+                          <TableCell className="px-2">
+                            <Badge variant={statusVariant(inst.status)}>{STATUS_LABELS[inst.status]}</Badge>
+                          </TableCell>
+                          <TableCell className="px-2 py-2">
+                            <div className="flex min-w-[10rem] flex-col gap-1">
+                              <Input
+                                type="number"
+                                min={0}
+                                step="any"
+                                placeholder="رقم"
+                                className="h-8 w-full text-xs"
+                                value={payAmounts[inst.id] ?? ''}
+                                onChange={(e) =>
+                                  setPayAmounts((p) => ({ ...p, [inst.id]: e.target.value }))
+                                }
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-7 w-full px-2 text-xs"
+                                disabled={payingId === inst.id}
+                                onClick={() => submitPay(inst.id)}
+                              >
+                                درج کریں
+                              </Button>
+                              {payMessage[inst.id] ? (
+                                <span className="text-[10px] text-slate-500">{payMessage[inst.id]}</span>
+                              ) : null}
+                              {lastPaymentBySchedule[inst.id] ? (
+                                <Link
+                                  href={`/dashboard/print/receipt/${lastPaymentBySchedule[inst.id].id}?auto=1`}
+                                  target="_blank"
+                                  className="inline-flex h-6 items-center gap-1 text-[10px] font-medium text-emerald-700"
+                                >
+                                  <Printer className="h-3 w-3" />
+                                  رسید #{lastPaymentBySchedule[inst.id].receiptNumber}
+                                </Link>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <TablePagination
+                  totalItems={lease.installments.length}
+                  start={installmentsPagination.start}
+                  end={installmentsPagination.end}
+                  safePage={installmentsPagination.safePage}
+                  totalPages={installmentsPagination.totalPages}
+                  onPageChange={installmentsPagination.setPage}
+                />
+              </div>
             </CardContent>
           </Card>
         </>

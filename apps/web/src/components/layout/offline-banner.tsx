@@ -33,7 +33,7 @@ export function OfflineBanner() {
     >
       <WifiOff className="h-5 w-5 shrink-0 text-amber-700" />
       <p>
-        <span className="font-semibold">انٹرنیٹ منقطع ہے۔</span> تبدیلیاں محفوظ نہیں ہوں گی — کنکشن بحال ہونے کا انتظار کریں۔
+        <span className="font-semibold">انٹرنیٹ منقطع ہے۔</span> ڈرافٹ خود محفوظ ہوگا — محفوظ پر کلک کریں تو قطار میں رہے گا، انٹرنیٹ آتے ہی بھیجا جائے گا۔
       </p>
     </div>
   );

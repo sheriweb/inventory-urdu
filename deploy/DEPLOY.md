@@ -1,27 +1,36 @@
 # Deploy — Git push = Hostinger
 
-## GitHub Actions deploy (recommended)
+## SSH auto-deploy (recommended — API token ki zaroorat nahi)
 
-GitHub repo → **Settings → Secrets → Actions**:
+Har `git push` on `main` → GitHub Actions → build → SSH upload → `prisma db push` → app restart.
+
+GitHub → **Settings → Secrets → Actions**:
 
 | Secret | Value |
 |--------|-------|
-| `HOSTINGER_API_TOKEN` | hPanel → Profile → API |
-| `HOSTINGER_DOMAIN` | `paleturquoise-stork-447573.hostingersite.com` |
+| `SSH_HOST` | `156.67.67.67` |
+| `SSH_PORT` | `65002` |
+| `SSH_USER` | `u938549775` |
+| `SSH_PASSWORD` | SSH password |
+| `DATABASE_URL` | `mysql://u938549775_testinven1:...@127.0.0.1:3306/u938549775_testinven1` |
 
-`git push` → build + Hostinger Node.js par deploy.
+Workflow: `.github/workflows/deploy-ssh.yml`  
+Local same flow: `npm run deploy:ssh` (needs `deploy/secrets.env`)
 
-### FTP — 3 tareeqe
+### Database schema changes
+
+`prisma/schema.prisma` change + push → deploy automatically runs `prisma db push` on server.  
+**Seed data** auto nahi chalti — sirf schema sync. Naya seed: SSH se manually `prisma/seed.ts`.
+
+### Other tareeqe
 
 | Tareeqa | Kaam karta hai? |
 |---------|-----------------|
-| `npm run deploy:ftp` (aap ke Mac se) | ✅ Haan |
-| GitHub cloud runner + FTP | ❌ Timeout (Hostinger block) |
-| Self-hosted runner + FTP | ✅ Haan — `deploy-self-hosted.yml` |
-| `HOSTINGER_API_TOKEN` | ✅ Best — Node.js build + start |
-
-Local FTP: `npm run deploy:ftp`  
-Self-hosted runner: GitHub → Settings → Actions → Runners → New → macOS install → Actions tab se **Deploy to Hostinger (Self-Hosted FTP)** run karein.
+| **SSH + GitHub Actions** | ✅ Best — no API, no Mac ON |
+| `npm run deploy:ssh` (local) | ✅ Haan |
+| `HOSTINGER_API_TOKEN` | ✅ Agar agency owner de |
+| GitHub cloud + FTP | ❌ Timeout |
+| Self-hosted Mac + FTP | ✅ `deploy-self-hosted.yml` (manual trigger) |
 
 ---
 

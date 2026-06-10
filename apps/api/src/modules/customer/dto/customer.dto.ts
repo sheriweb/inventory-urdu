@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateCustomerDto {
   @IsString()
@@ -26,12 +26,21 @@ export class CreateCustomerDto {
   mobile?: string;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  additionalMobiles?: string[];
+
+  @IsOptional()
   @IsString()
   cnic?: string;
 
   @IsOptional()
   @IsString()
   cnicPhotoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 
   @IsOptional()
   @IsString()
@@ -93,12 +102,21 @@ export class UpdateCustomerDto {
   mobile?: string;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  additionalMobiles?: string[];
+
+  @IsOptional()
   @IsString()
   cnic?: string;
 
   @IsOptional()
   @IsString()
   cnicPhotoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 
   @IsOptional()
   @IsString()

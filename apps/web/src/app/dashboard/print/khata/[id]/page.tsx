@@ -3,7 +3,12 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
-import { InstallmentFrequency, InstallmentStatus } from '@inventory-urdu/shared';
+import {
+  InstallmentFrequency,
+  InstallmentStatus,
+  getDisplayFieldsFromUnit,
+  type LeaseItemUnitDetail,
+} from '@inventory-urdu/shared';
 import { fmtDate, fmtMoney } from '@/lib/format';
 
 const FREQUENCY_LABELS: Record<InstallmentFrequency, string> = {
@@ -31,7 +36,13 @@ type LeasePrint = {
   customer: { name: string; mobile?: string | null; cnic?: string | null };
   salesman?: { name: string } | null;
   recoveryMan?: { name: string } | null;
-  leaseItems: { itemName: string; quantity: number; rate: string | number; totalAmount: string | number }[];
+  leaseItems: {
+    itemName: string;
+    quantity: number;
+    rate: string | number;
+    totalAmount: string | number;
+    unitDetails?: LeaseItemUnitDetail[] | null;
+  }[];
   installments: {
     installmentNumber: number;
     dueDate: string;
@@ -97,7 +108,19 @@ function KhataPrintContent() {
         <tbody>
           {lease.leaseItems.map((item, i) => (
             <tr key={i} className="border-b border-slate-200">
-              <td className="p-2">{item.itemName}</td>
+              <td className="p-2">
+                <div>{item.itemName}</div>
+                {(item.unitDetails ?? []).map((unit) => {
+                  const fields = getDisplayFieldsFromUnit(unit);
+                  if (fields.length === 0) return null;
+                  return (
+                    <div key={unit.unitIndex} className="mt-1 text-xs text-slate-600">
+                      {(item.unitDetails ?? []).length > 1 ? `یونٹ #${unit.unitIndex}: ` : ''}
+                      {fields.map((field) => `${field.label}: ${field.value}`).join(' · ')}
+                    </div>
+                  );
+                })}
+              </td>
               <td className="p-2">{item.quantity}</td>
               <td className="p-2">{fmtMoney(item.rate)}</td>
               <td className="p-2">{fmtMoney(item.totalAmount)}</td>

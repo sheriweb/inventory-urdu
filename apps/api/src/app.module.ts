@@ -23,6 +23,7 @@ import { ClaimModule } from './modules/claim/claim.module';
 import { RoznamchaModule } from './modules/roznamcha/roznamcha.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { AutomationModule } from './modules/automation/automation.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AutomationModule } from './modules/automation/automation.module';
     RoznamchaModule,
     UploadModule,
     AutomationModule,
+    MonitoringModule,
   ],
   providers: [
     {

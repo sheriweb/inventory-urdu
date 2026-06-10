@@ -13,6 +13,14 @@ export class DateRangeQueryDto {
   @IsOptional()
   @IsUUID()
   recoveryManId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  salesmanId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  outdoorManId?: string;
 }
 
 export class AccountsQueryDto extends DateRangeQueryDto {

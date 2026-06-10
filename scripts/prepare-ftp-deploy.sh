@@ -10,9 +10,13 @@ mkdir -p "$OUT"
 
 rsync -a \
   --exclude node_modules \
+  --exclude 'node_modules/**' \
   --exclude .git \
   --exclude deploy-output \
   --exclude deploy/secrets.env \
+  --exclude deploy/leasing-store-deploy-key \
+  --exclude deploy/leasing-store-deploy-key.pub \
+  --exclude apps/api/.env \
   --exclude 'deploy/*.zip' \
   --exclude .turbo \
   --exclude uploads \

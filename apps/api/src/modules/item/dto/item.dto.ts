@@ -1,5 +1,29 @@
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class ItemIdentifierFieldDto {
+  @IsOptional()
+  @IsString()
+  key?: string | null;
+
+  @IsString()
+  @IsNotEmpty()
+  label!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
+}
 
 export class CreateItemDto {
   @IsUUID()
@@ -22,6 +46,12 @@ export class CreateItemDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   saleRate!: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ItemIdentifierFieldDto)
+  identifierFields?: ItemIdentifierFieldDto[];
 }
 
 export class UpdateItemDto {
@@ -53,4 +83,10 @@ export class UpdateItemDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ItemIdentifierFieldDto)
+  identifierFields?: ItemIdentifierFieldDto[];
 }

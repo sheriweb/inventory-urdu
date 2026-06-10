@@ -26,5 +26,9 @@ export function rememberCustomer(customer: { id: string; name: string; mobile?: 
     { id: customer.id, name: customer.name, mobile: customer.mobile, usedAt: Date.now() },
     ...getRecentCustomers().filter((c) => c.id !== customer.id),
   ].slice(0, MAX_RECENT);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* storage blocked */
+  }
 }

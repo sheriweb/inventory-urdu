@@ -64,4 +64,11 @@ export class ReportController {
     const data = await this.reportService.getBillProfitReport(user, query);
     return { message: MESSAGES.LIST_FETCHED('Bill profit report'), data };
   }
+
+  @Get('daily-summary')
+  @Auth(...REPORT_ROLES)
+  async dailySummary(@CurrentUser() user: AuthUser, @Query('date') date?: string) {
+    const data = await this.reportService.getDailySummary(user, date);
+    return { message: MESSAGES.FETCHED('Daily summary'), data };
+  }
 }

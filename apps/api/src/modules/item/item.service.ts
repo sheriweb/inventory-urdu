@@ -5,7 +5,31 @@ import { PrismaService } from '../../database/prisma.service';
 import { MESSAGES } from '../../common/constants';
 import { buildPagination, ListQueryDto } from '../../common/dto/list-query.dto';
 import { requireShopId } from '../../common/utils';
-import { CreateItemDto, UpdateItemDto } from './dto';
+import { CreateItemDto, ItemIdentifierFieldDto, UpdateItemDto } from './dto';
+
+function slugKey(label: string, index: number): string {
+  const base = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return base || `field_${index + 1}`;
+}
+
+function normalizeIdentifierFieldsForDb(
+  fields?: ItemIdentifierFieldDto[],
+): Prisma.InputJsonValue | typeof Prisma.DbNull | undefined {
+  if (fields === undefined) return undefined;
+  const normalized = fields
+    .filter((field) => field?.label?.trim())
+    .map((field, index) => ({
+      key: field.key?.trim() || slugKey(field.label, index),
+      label: field.label.trim(),
+      required: Boolean(field.required),
+    }));
+  return normalized.length > 0 ? normalized : Prisma.DbNull;
+}
 
 @Injectable()
 export class ItemService {
@@ -41,6 +65,7 @@ export class ItemService {
           model: dto.model,
           purchaseRate: dto.purchaseRate,
           saleRate: dto.saleRate,
+          identifierFields: normalizeIdentifierFieldsForDb(dto.identifierFields),
         },
         include: { company: { select: { id: true, name: true } } },
       });
@@ -105,9 +130,21 @@ export class ItemService {
     if (dto.companyId) {
       await this.assertCompanyInShop(shopId, dto.companyId);
     }
+
+    const data: Prisma.ItemUncheckedUpdateInput = {};
+    if (dto.companyId !== undefined) data.companyId = dto.companyId;
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.model !== undefined) data.model = dto.model;
+    if (dto.purchaseRate !== undefined) data.purchaseRate = dto.purchaseRate;
+    if (dto.saleRate !== undefined) data.saleRate = dto.saleRate;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.identifierFields !== undefined) {
+      data.identifierFields = normalizeIdentifierFieldsForDb(dto.identifierFields);
+    }
+
     return this.prisma.item.update({
       where: { id },
-      data: dto,
+      data,
       include: { company: { select: { id: true, name: true } } },
     });
   }

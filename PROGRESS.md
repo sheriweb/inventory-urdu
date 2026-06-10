@@ -8,6 +8,7 @@ Last updated: 2026-06-01
 |-------|------|--------|
 | 0–9 | Foundation → Roznamcha | ✅ Done |
 | 10 | Polish (payments, PDF, CNIC, perf) | 🔄 In Progress |
+| 11 | Automation & AI (voice, WhatsApp, scan) | 🔄 Tier 1 started — [AUTOMATION_AI_ROADMAP.md](./AUTOMATION_AI_ROADMAP.md) |
 
 ---
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Banknote, RefreshCw, Wallet, ListChecks, Receipt, Bell } from 'lucide-react';
 import api from '@/lib/api';
@@ -26,18 +26,48 @@ import { PAYMENT_TYPE_LABELS } from '@/lib/labels';
 import { fmtDate, fmtMoney, monthStartInputValue, todayInputValue } from '@/lib/format';
 import { StaffType, type Staff } from '@inventory-urdu/shared';
 
+type RecoveryListCategory = 'OVERDUE' | 'SHORT' | 'DUE';
+
 type RecoveryListRow = {
   leaseAccountId: string;
   accountNumber: number;
-  customer: { name: string; mobile?: string | null; address?: string | null };
+  customer: {
+    name: string;
+    mobile?: string | null;
+    additionalMobiles?: string[];
+    address?: string | null;
+  };
   guarantorFirstName: string | null;
+  guarantorName: string | null;
+  guarantorPhone: string | null;
   itemsSummary: string;
-  nextDueInstallment: { id: string; installmentNumber: number; dueDate: string } | null;
+  nextDueInstallment: {
+    id: string;
+    installmentNumber: number;
+    dueDate: string;
+    status?: string;
+  } | null;
   scheduledAmount: number | null;
   paidAmount: number | null;
+  installmentDue: number;
   totalRemaining: number;
+  isOverdue: boolean;
+  isDueOnDate: boolean;
+  isShort: boolean;
+  listCategory: RecoveryListCategory;
+  daysOverdue: number;
+  overdueInstallmentCount: number;
   recoveryMan: { id: string; name: string } | null;
 };
+
+type RecoveryListSummary = {
+  total: number;
+  overdue: number;
+  dueOnDate: number;
+  short: number;
+};
+
+type ListFilter = 'all' | 'overdue' | 'due' | 'short';
 
 type PaymentType = 'INSTALLMENT' | 'ADVANCE' | 'DISCOUNT';
 
@@ -54,9 +84,22 @@ type PaymentRow = {
 
 const TYPE_LABELS = PAYMENT_TYPE_LABELS;
 
-function installmentRemaining(row: RecoveryListRow): number | null {
-  if (row.scheduledAmount == null || row.paidAmount == null) return null;
-  return Math.max(0, row.scheduledAmount - row.paidAmount);
+function listCategoryBadge(row: RecoveryListRow) {
+  if (row.isOverdue) {
+    return (
+      <Badge variant="danger">
+        تاخیر{row.daysOverdue > 0 ? ` · ${row.daysOverdue} دن` : ''}
+        {row.overdueInstallmentCount > 1 ? ` · ${row.overdueInstallmentCount} قسط` : ''}
+      </Badge>
+    );
+  }
+  if (row.isShort) {
+    return <Badge variant="warning">شارٹ</Badge>;
+  }
+  if (row.isDueOnDate) {
+    return <Badge variant="success">آج واجب</Badge>;
+  }
+  return <Badge variant="default">واجب</Badge>;
 }
 
 const RECOVERY_TABS = [
@@ -65,7 +108,7 @@ const RECOVERY_TABS = [
   { id: 'payments', label: 'ادائیگیاں', icon: Receipt, description: 'مدت کے حساب سے وصول شدہ رقم' },
 ];
 
-export default function RecoveryHubPage() {
+function RecoveryHubContent() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState('list');
   const [error, setError] = useState('');
@@ -76,6 +119,8 @@ export default function RecoveryHubPage() {
   const debouncedRecoveryManId = useDebounce(recoveryManId, 400);
   const [recoveryMen, setRecoveryMen] = useState<Staff[]>([]);
   const [listRows, setListRows] = useState<RecoveryListRow[]>([]);
+  const [listSummary, setListSummary] = useState<RecoveryListSummary | null>(null);
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [loadingList, setLoadingList] = useState(true);
 
   const [from, setFrom] = useState(monthStartInputValue());
@@ -111,7 +156,14 @@ export default function RecoveryHubPage() {
       const params: Record<string, string> = { date: debouncedDate };
       if (debouncedRecoveryManId) params.recoveryManId = debouncedRecoveryManId;
       const { data } = await api.get('/recovery/list', { params });
-      setListRows(data.data as RecoveryListRow[]);
+      const payload = data.data as { rows?: RecoveryListRow[]; summary?: RecoveryListSummary } | RecoveryListRow[];
+      if (Array.isArray(payload)) {
+        setListRows(payload);
+        setListSummary(null);
+      } else {
+        setListRows(payload.rows ?? []);
+        setListSummary(payload.summary ?? null);
+      }
     } catch {
       setError('ریکوری لسٹ لوڈ نہیں ہو سکی');
       setListRows([]);
@@ -181,22 +233,70 @@ export default function RecoveryHubPage() {
     }
   }
 
+  const filteredListRows = useMemo(() => {
+    if (listFilter === 'all') return listRows;
+    if (listFilter === 'overdue') return listRows.filter((r) => r.isOverdue);
+    if (listFilter === 'due') return listRows.filter((r) => r.isDueOnDate && !r.isOverdue);
+    return listRows.filter((r) => r.isShort && !r.isOverdue);
+  }, [listRows, listFilter]);
+
   const listColumns: DataTableColumn<RecoveryListRow>[] = [
     { id: 'account', header: 'کھاتہ', cell: (row) => <span className="font-medium">{row.accountNumber}</span> },
+    {
+      id: 'status',
+      header: 'حالت',
+      cell: (row) => listCategoryBadge(row),
+    },
     { id: 'name', header: 'نام', cell: (row) => row.customer.name },
     {
       id: 'mobile',
       header: 'موبائل',
-      cell: (row) => <PhoneActions mobile={row.customer.mobile} compact />,
+      cell: (row) => (
+        <PhoneActions
+          mobile={row.customer.mobile}
+          additionalMobiles={row.customer.additionalMobiles}
+          compact
+        />
+      ),
+    },
+    {
+      id: 'dueDate',
+      header: 'قسط تاریخ',
+      cell: (row) =>
+        row.nextDueInstallment?.dueDate ? fmtDate(row.nextDueInstallment.dueDate) : '—',
+    },
+    {
+      id: 'address',
+      header: 'پتہ',
+      cell: (row) => (
+        <span className="line-clamp-2 max-w-[10rem] text-xs text-slate-600">
+          {row.customer.address ?? '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'guarantor',
+      header: 'ضامن',
+      cell: (row) => (
+        <span className="text-xs text-slate-700">
+          {row.guarantorName ?? '—'}
+          {row.guarantorPhone ? (
+            <span className="mt-0.5 block text-slate-500" dir="ltr">
+              {row.guarantorPhone}
+            </span>
+          ) : null}
+        </span>
+      ),
     },
     { id: 'scheduled', header: 'اصل قسط', cell: (row) => fmtMoney(row.scheduledAmount) },
     {
       id: 'due',
       header: 'بقایا',
-      cell: (row) => {
-        const due = installmentRemaining(row);
-        return <span className="font-medium text-emerald-800">{fmtMoney(due ?? row.totalRemaining)}</span>;
-      },
+      cell: (row) => (
+        <span className={`font-medium ${row.isOverdue ? 'text-red-700' : 'text-emerald-800'}`}>
+          {fmtMoney(row.installmentDue ?? row.totalRemaining)}
+        </span>
+      ),
     },
     { id: 'recoveryMan', header: 'ریکوری مین', cell: (row) => row.recoveryMan?.name ?? '—' },
     {
@@ -294,16 +394,53 @@ export default function RecoveryHubPage() {
             </CardContent>
           </Card>
 
+          {listSummary ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <button
+                type="button"
+                onClick={() => setListFilter('all')}
+                className={`rounded-xl border px-4 py-3 text-right transition ${listFilter === 'all' ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <p className="text-xs text-slate-500">کل وصولی</p>
+                <p className="text-xl font-semibold text-slate-900">{listSummary.total}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter('overdue')}
+                className={`rounded-xl border px-4 py-3 text-right transition ${listFilter === 'overdue' ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <p className="text-xs text-slate-500">تاخیر (اوور ڈیو)</p>
+                <p className="text-xl font-semibold text-red-700">{listSummary.overdue}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter('due')}
+                className={`rounded-xl border px-4 py-3 text-right transition ${listFilter === 'due' ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <p className="text-xs text-slate-500">منتخب تاریخ واجب</p>
+                <p className="text-xl font-semibold text-amber-800">{listSummary.dueOnDate}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter('short')}
+                className={`rounded-xl border px-4 py-3 text-right transition ${listFilter === 'short' ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              >
+                <p className="text-xs text-slate-500">شارٹ وصولی</p>
+                <p className="text-xl font-semibold text-orange-800">{listSummary.short}</p>
+              </button>
+            </div>
+          ) : null}
+
           <DataTable
-            data={listRows}
+            data={filteredListRows}
             columns={listColumns}
             rowKey={(row) => row.leaseAccountId}
             loading={loadingList}
             pageSize={12}
-            emptyTitle="آج کوئی وصولی نہیں"
-            emptyDescription="تاریخ بدل کر دیکھیں یا نیا کھاتہ شامل کریں"
+            emptyTitle={listFilter === 'overdue' ? 'تاخیر میں کوئی کھاتہ نہیں' : 'آج کوئی وصولی نہیں'}
+            emptyDescription="تاریخ بدل کر دیکھیں یا فلٹر تبدیل کریں"
             searchKeys={(row) =>
-              `${row.accountNumber} ${row.customer.name} ${row.customer.mobile ?? ''} ${row.recoveryMan?.name ?? ''}`
+              `${row.accountNumber} ${row.customer.name} ${row.customer.mobile ?? ''} ${(row.customer.additionalMobiles ?? []).join(' ')} ${row.guarantorName ?? ''} ${row.customer.address ?? ''} ${row.recoveryMan?.name ?? ''}`
             }
             onRowClick={(row) => {
               if (row.nextDueInstallment?.id) openCollect(row);
@@ -393,5 +530,19 @@ export default function RecoveryHubPage() {
         onConfirm={confirmDeletePayment}
       />
     </div>
+  );
+}
+
+export default function RecoveryHubPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
+          وصولی صفحہ لوڈ ہو رہا ہے…
+        </div>
+      }
+    >
+      <RecoveryHubContent />
+    </Suspense>
   );
 }

@@ -61,6 +61,20 @@ function buildItemsSummary(
     .join(', ');
 }
 
+function parseAdditionalMobiles(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function daysBetween(from: Date, to: Date): number {
+  const a = startOfDay(from).getTime();
+  const b = startOfDay(to).getTime();
+  return Math.max(0, Math.floor((b - a) / (24 * 60 * 60 * 1000)));
+}
+
 const DEFAULT_REMINDER_TEMPLATE =
   'السلام علیکم {name}،\n{shop} سے یاد دہانی: کھاتہ #{account} کی قسط Rs {amount} {dueDate} کو واجب ہے۔ براہ کرم وقت پر ادا کریں۔ شکریہ';
 
@@ -113,6 +127,7 @@ export class RecoveryService {
       throw new BadRequestException('Invalid date');
     }
     const dueBefore = endOfDay(asOf);
+    const asOfStart = startOfDay(asOf);
 
     const recoveryManId = query.recoveryManId;
 
@@ -139,13 +154,14 @@ export class RecoveryService {
           select: {
             name: true,
             mobile: true,
+            additionalMobiles: true,
             presentAddress: true,
             permanentAddress: true,
             guarantors: {
               where: { isActive: true },
               orderBy: { createdAt: 'asc' },
               take: 1,
-              select: { name: true },
+              select: { name: true, phone: true },
             },
           },
         },
@@ -165,15 +181,47 @@ export class RecoveryService {
           orderBy: [{ dueDate: 'asc' }, { installmentNumber: 'asc' }],
         },
       },
-      orderBy: { accountNumber: 'asc' },
     });
 
-    return leases.map((lease) => {
+    const rows = leases.map((lease) => {
       const next = lease.installments[0];
       const address =
         lease.customer.presentAddress ??
         lease.customer.permanentAddress ??
         null;
+      const guarantor = lease.customer.guarantors[0];
+      const scheduled = next ? toNumber(next.scheduledAmount) : 0;
+      const paid = next ? toNumber(next.paidAmount) : 0;
+      const installmentDue = next ? Math.max(0, roundMoney(scheduled - paid)) : 0;
+      const dueDate = next ? new Date(next.dueDate) : null;
+      const dueDayStart = dueDate ? startOfDay(dueDate) : null;
+
+      const overdueInstallments = lease.installments.filter((inst) => {
+        const unpaid = toNumber(inst.paidAmount) < toNumber(inst.scheduledAmount);
+        return unpaid && startOfDay(new Date(inst.dueDate)) < asOfStart;
+      });
+
+      const isOverdue = overdueInstallments.length > 0;
+      const isDueOnDate =
+        Boolean(next) &&
+        dueDayStart !== null &&
+        dueDayStart >= asOfStart &&
+        dueDayStart <= dueBefore &&
+        installmentDue > 0;
+      const isShort =
+        Boolean(next) &&
+        paid > 0 &&
+        installmentDue > 0 &&
+        (next.isShort || paid < scheduled);
+
+      let listCategory: 'OVERDUE' | 'SHORT' | 'DUE' = 'DUE';
+      if (isOverdue) listCategory = 'OVERDUE';
+      else if (isShort) listCategory = 'SHORT';
+
+      const daysOverdue =
+        isOverdue && dueDayStart
+          ? daysBetween(dueDayStart, asOfStart)
+          : 0;
 
       return {
         leaseAccountId: lease.id,
@@ -181,27 +229,60 @@ export class RecoveryService {
         customer: {
           name: lease.customer.name,
           mobile: lease.customer.mobile,
+          additionalMobiles: parseAdditionalMobiles(lease.customer.additionalMobiles),
           address,
         },
-        guarantorFirstName: guarantorFirstName(
-          lease.customer.guarantors[0]?.name,
-        ),
+        guarantorFirstName: guarantorFirstName(guarantor?.name),
+        guarantorName: guarantor?.name ?? null,
+        guarantorPhone: guarantor?.phone ?? null,
         itemsSummary: buildItemsSummary(lease.leaseItems),
         nextDueInstallment: next
           ? {
               id: next.id,
               installmentNumber: next.installmentNumber,
               dueDate: next.dueDate,
+              status: next.status,
             }
           : null,
-        scheduledAmount: next ? toNumber(next.scheduledAmount) : null,
-        paidAmount: next ? toNumber(next.paidAmount) : null,
+        scheduledAmount: next ? scheduled : null,
+        paidAmount: next ? paid : null,
+        installmentDue,
         totalRemaining: toNumber(lease.remainingBalance),
+        isOverdue,
+        isDueOnDate,
+        isShort,
+        listCategory,
+        daysOverdue,
+        overdueInstallmentCount: overdueInstallments.length,
         recoveryMan: lease.recoveryMan
           ? { id: lease.recoveryMan.id, name: lease.recoveryMan.name }
           : null,
       };
     });
+
+    rows.sort((a, b) => {
+      if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+      if (a.isOverdue && b.isOverdue) return b.daysOverdue - a.daysOverdue;
+      if (a.listCategory === 'SHORT' && b.listCategory !== 'SHORT') return -1;
+      if (b.listCategory === 'SHORT' && a.listCategory !== 'SHORT') return 1;
+      const aDue = a.nextDueInstallment?.dueDate
+        ? new Date(a.nextDueInstallment.dueDate).getTime()
+        : 0;
+      const bDue = b.nextDueInstallment?.dueDate
+        ? new Date(b.nextDueInstallment.dueDate).getTime()
+        : 0;
+      if (aDue !== bDue) return aDue - bDue;
+      return a.accountNumber - b.accountNumber;
+    });
+
+    const summary = {
+      total: rows.length,
+      overdue: rows.filter((r) => r.isOverdue).length,
+      dueOnDate: rows.filter((r) => r.isDueOnDate && !r.isOverdue).length,
+      short: rows.filter((r) => r.isShort && !r.isOverdue).length,
+    };
+
+    return { rows, summary };
   }
 
   async collectPayment(user: AuthUser, dto: CollectPaymentDto) {

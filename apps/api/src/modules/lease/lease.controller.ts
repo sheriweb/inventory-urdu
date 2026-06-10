@@ -28,6 +28,13 @@ export class LeaseController {
     return { message: MESSAGES.CREATED('Lease account'), data };
   }
 
+  @Get('preview-meta')
+  @Auth(...SHOP_READ_ROLES)
+  async previewMeta(@CurrentUser() user: AuthUser) {
+    const data = await this.leaseService.getPreviewMeta(user);
+    return { message: MESSAGES.FETCHED('Lease preview'), data };
+  }
+
   @Get()
   @Auth(...SHOP_READ_ROLES)
   async list(@CurrentUser() user: AuthUser, @Query() query: AccountsQueryDto) {

@@ -21,6 +21,7 @@ type QuickAddSelectProps = {
   className?: string;
   staffType?: StaffType;
   showAdd?: boolean;
+  compact?: boolean;
   children?: React.ReactNode;
 };
 
@@ -45,6 +46,7 @@ export function QuickAddSelect({
   className,
   staffType,
   showAdd = true,
+  compact = false,
   children,
 }: QuickAddSelectProps) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -65,6 +67,7 @@ export function QuickAddSelect({
         required={required}
         className={className}
         showAdd={showAdd}
+        compact={compact}
         onAddClick={() => setModalOpen(true)}
         addTitle={ADD_LABELS[entity]}
       >

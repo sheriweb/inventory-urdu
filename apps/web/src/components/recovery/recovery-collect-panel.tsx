@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { InputWithVoice } from '@/components/forms/input-with-voice';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { PhoneActions } from '@/components/ui/phone-actions';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -122,7 +123,8 @@ export function RecoveryCollectPanel({
     setLastPaymentId(null);
     try {
       const { data } = await api.get(`/leases/${id}`);
-      setLease(data.data as LeaseDetail);
+      const raw = data.data as LeaseDetail;
+      setLease({ ...raw, installments: Array.isArray(raw.installments) ? raw.installments : [] });
     } catch {
       setError('کھاتہ لوڈ نہیں ہو سکا');
       setLease(null);
@@ -150,7 +152,7 @@ export function RecoveryCollectPanel({
       try {
         const { data } = await api.get('/leases', { params: { search: q, status: 'ACTIVE' } });
         if (!active) return;
-        const rows = (data.data as LeaseListRow[]).slice(0, 12);
+        const rows = (Array.isArray(data.data) ? data.data : []).slice(0, 12) as LeaseListRow[];
         setSearchResults(rows);
       } catch {
         if (active) setSearchResults([]);
@@ -169,8 +171,9 @@ export function RecoveryCollectPanel({
 
   const dueInstallments = useMemo(() => {
     if (!lease) return [];
-    const maxCount = lease.installmentCount || lease.installments.length;
-    return lease.installments
+    const installments = lease.installments ?? [];
+    const maxCount = lease.installmentCount || installments.length;
+    return installments
       .filter(
         (i) =>
           i.installmentNumber <= maxCount &&
@@ -183,9 +186,10 @@ export function RecoveryCollectPanel({
 
   const nextFutureInstallment = useMemo(() => {
     if (!lease) return null;
-    const maxCount = lease.installmentCount || lease.installments.length;
+    const installments = lease.installments ?? [];
+    const maxCount = lease.installmentCount || installments.length;
     return (
-      lease.installments
+      installments
         .filter(
           (i) =>
             i.installmentNumber <= maxCount &&
@@ -199,7 +203,9 @@ export function RecoveryCollectPanel({
 
   const paidInstallmentCount = useMemo(() => {
     if (!lease) return 0;
-    return lease.installments.filter((i) => i.status === InstallmentStatus.PAID || owedAmount(i) <= 0).length;
+    return (lease.installments ?? []).filter(
+      (i) => i.status === InstallmentStatus.PAID || owedAmount(i) <= 0,
+    ).length;
   }, [lease]);
 
   const duePagination = useTablePagination(dueInstallments.length, 10, [leaseId]);
@@ -346,10 +352,12 @@ export function RecoveryCollectPanel({
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">کھاتہ نمبر</label>
             <div className="flex gap-2">
-              <Input
+              <InputWithVoice
                 value={accountSearch}
                 onChange={(e) => setAccountSearch(e.target.value)}
                 placeholder="مثلاً 1001"
+                voiceMode="number"
+                voiceTitle="کھاتہ نمبر بولیں"
                 dir="ltr"
                 className="text-left"
                 onKeyDown={(e) => {

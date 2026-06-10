@@ -35,3 +35,4 @@ MAMP MySQL via socket — see `.env.example`
 | 8 | Loading/unloading + claims | Done |
 | 9 | Roznamcha, cash book, trial balance + demo seed | Done |
 | 10+ | Invoice edit, PDF, CNIC photos, polish | Planned |
+| 11 | Automation & AI (voice, WhatsApp, scan, optional Groq/Gemini) | Planned — see [AUTOMATION_AI_ROADMAP.md](./AUTOMATION_AI_ROADMAP.md) |

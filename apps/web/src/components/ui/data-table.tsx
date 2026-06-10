@@ -14,6 +14,8 @@ export type DataTableColumn<T> = {
   cell: (row: T) => React.ReactNode;
   className?: string;
   headerClassName?: string;
+  /** Fixed column width for wide tables — e.g. "7rem" */
+  width?: string;
 };
 
 type DataTableProps<T> = {
@@ -39,7 +41,18 @@ type DataTableProps<T> = {
   onRowClick?: (row: T) => void;
   rowClassName?: (row: T) => string | undefined;
   compact?: boolean;
+  /** Minimum table width — enables horizontal scroll on wide reports */
+  minTableWidth?: string;
 };
+
+export function tableTruncateCell(content: React.ReactNode, title?: string) {
+  const label = title ?? (typeof content === 'string' ? content : undefined);
+  return (
+    <span className="block min-w-0 truncate" title={label}>
+      {content}
+    </span>
+  );
+}
 
 function SkeletonBar({ className }: { className?: string }) {
   return <div className={cn('skeleton-bar h-3 rounded-md bg-slate-200/80', className)} />;
@@ -84,6 +97,7 @@ export function DataTable<T>({
   onRowClick,
   rowClassName,
   compact = false,
+  minTableWidth,
 }: DataTableProps<T>) {
   const [internalQuery, setInternalQuery] = React.useState('');
   const isServer = paginationMode === 'server';
@@ -139,10 +153,10 @@ export function DataTable<T>({
       )}
 
       <div className="overflow-x-auto">
-        <Table>
+        <Table style={minTableWidth ? { minWidth: minTableWidth } : undefined}>
           <colgroup>
             {columns.map((col) => (
-              <col key={col.id} className={col.headerClassName} />
+              <col key={col.id} style={col.width ? { width: col.width } : undefined} />
             ))}
             {actions ? <col style={{ width: '6.5rem' }} /> : null}
           </colgroup>
@@ -186,7 +200,10 @@ export function DataTable<T>({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {columns.map((col) => (
-                    <TableCell key={col.id} className={cn(compact && 'px-3 py-2.5', col.className)}>
+                    <TableCell
+                      key={col.id}
+                      className={cn('max-w-0 overflow-hidden', compact && 'px-3 py-2.5', col.className)}
+                    >
                       {col.cell(row)}
                     </TableCell>
                   ))}

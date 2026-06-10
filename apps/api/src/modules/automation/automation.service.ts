@@ -12,7 +12,14 @@ function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === 'number' ? value : Number(value);
 }
 
-const DEFAULTED_OVERDUE_THRESHOLD = 3;
+/** 3 months grace after first overdue before ڈیفالٹر کھاتہ */
+const DEFAULTED_GRACE_DAYS = 90;
+
+const UNPAID_STATUSES: InstallmentStatus[] = [
+  InstallmentStatus.PENDING,
+  InstallmentStatus.PARTIAL,
+  InstallmentStatus.OVERDUE,
+];
 
 @Injectable()
 export class AutomationService {
@@ -29,7 +36,7 @@ export class AutomationService {
         dueDate: { lt: todayStart },
         status: { in: [InstallmentStatus.PENDING, InstallmentStatus.PARTIAL] },
         leaseAccount: {
-          status: LeaseStatus.ACTIVE,
+          status: { in: [LeaseStatus.ACTIVE, LeaseStatus.DEFAULTED] },
           ...(shopId ? { shopId } : {}),
         },
       },
@@ -58,14 +65,38 @@ export class AutomationService {
     return result.count;
   }
 
-  /** Close fully-paid leases; flag chronic defaulters (core qist lifecycle). */
+  private isUnpaidInstallment(row: {
+    scheduledAmount: Prisma.Decimal | number;
+    paidAmount: Prisma.Decimal | number;
+  }): boolean {
+    return toNumber(row.paidAmount) < toNumber(row.scheduledAmount);
+  }
+
+  private earliestOverdueDueDate(
+    installments: { dueDate: Date; scheduledAmount: Prisma.Decimal | number; paidAmount: Prisma.Decimal | number }[],
+    before: Date,
+  ): Date | null {
+    let earliest: Date | null = null;
+    for (const row of installments) {
+      if (!this.isUnpaidInstallment(row)) continue;
+      const due = startOfDay(new Date(row.dueDate));
+      if (due >= before) continue;
+      if (!earliest || due < earliest) earliest = due;
+    }
+    return earliest;
+  }
+
+  /** Close fully-paid leases; flag chronic defaulters after 3-month grace; restore when cleared. */
   async syncLeaseAccountStatuses(shopId?: string): Promise<void> {
     const shopFilter = shopId ? { shopId } : {};
+    const todayStart = startOfDay(new Date());
+    const graceCutoff = new Date(todayStart);
+    graceCutoff.setDate(graceCutoff.getDate() - DEFAULTED_GRACE_DAYS);
 
     await this.prisma.leaseAccount.updateMany({
       where: {
         ...shopFilter,
-        status: LeaseStatus.ACTIVE,
+        status: { in: [LeaseStatus.ACTIVE, LeaseStatus.DEFAULTED] },
         remainingBalance: { lte: 0 },
       },
       data: { status: LeaseStatus.CLOSED },
@@ -76,18 +107,16 @@ export class AutomationService {
       select: {
         id: true,
         installments: {
-          where: { status: InstallmentStatus.OVERDUE },
-          select: { scheduledAmount: true, paidAmount: true },
+          where: { status: { in: UNPAID_STATUSES } },
+          select: { dueDate: true, scheduledAmount: true, paidAmount: true },
         },
       },
     });
 
     const defaultedIds = activeLeases
       .filter((lease) => {
-        const overdueUnpaid = lease.installments.filter(
-          (row) => toNumber(row.paidAmount) < toNumber(row.scheduledAmount),
-        );
-        return overdueUnpaid.length >= DEFAULTED_OVERDUE_THRESHOLD;
+        const earliest = this.earliestOverdueDueDate(lease.installments, todayStart);
+        return earliest !== null && earliest <= graceCutoff;
       })
       .map((lease) => lease.id);
 
@@ -96,7 +125,36 @@ export class AutomationService {
         where: { id: { in: defaultedIds } },
         data: { status: LeaseStatus.DEFAULTED },
       });
-      this.logger.log(`Marked ${defaultedIds.length} lease(s) as DEFAULTED`);
+      this.logger.log(`Marked ${defaultedIds.length} lease(s) as DEFAULTED (>${DEFAULTED_GRACE_DAYS}d grace)`);
+    }
+
+    const defaultedLeases = await this.prisma.leaseAccount.findMany({
+      where: { ...shopFilter, status: LeaseStatus.DEFAULTED },
+      select: {
+        id: true,
+        remainingBalance: true,
+        installments: {
+          where: { status: { in: UNPAID_STATUSES } },
+          select: { dueDate: true, scheduledAmount: true, paidAmount: true },
+        },
+      },
+    });
+
+    const restoreIds: string[] = [];
+    for (const lease of defaultedLeases) {
+      if (toNumber(lease.remainingBalance) <= 0) continue;
+      const earliest = this.earliestOverdueDueDate(lease.installments, todayStart);
+      if (earliest === null) {
+        restoreIds.push(lease.id);
+      }
+    }
+
+    if (restoreIds.length > 0) {
+      await this.prisma.leaseAccount.updateMany({
+        where: { id: { in: restoreIds } },
+        data: { status: LeaseStatus.ACTIVE },
+      });
+      this.logger.log(`Restored ${restoreIds.length} lease(s) from DEFAULTED to ACTIVE`);
     }
   }
 }

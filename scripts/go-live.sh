@@ -48,8 +48,7 @@ cat <<EOF
    (server par pehle se hai, ya local: deploy/inventory-urdu_*.zip)
 4. Build settings:
    - Node.js: 20
-   - Install: npm install
-   - Build:  npm run hostinger:build
+   - Build:  npm run hostinger:deploy
    - Start:  npm run hostinger:start
 5. Environment variables → Import from .env → production.env
    (server par upload ho chuka, ya local: deploy/hostinger-production.env)

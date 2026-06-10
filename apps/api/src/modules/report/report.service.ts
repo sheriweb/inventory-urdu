@@ -1,9 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthUser } from '@inventory-urdu/shared';
-import { LeaseStatus, PaymentType, Prisma } from '@prisma/client';
+import { InstallmentStatus, LeaseStatus, PaymentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { requireShopId } from '../../common/utils';
+import { MESSAGES } from '../../common/constants';
+import { RecoveryService } from '../recovery/recovery.service';
 import { DateRangeQueryDto } from './dto';
+import { buildDailySummaryParagraph } from './daily-summary-text';
 
 function toNumber(value: Prisma.Decimal | number): number {
   return typeof value === 'number' ? value : Number(value);
@@ -72,7 +75,10 @@ function isShortRow(scheduled: number, paid: number, isShort: boolean): boolean 
 
 @Injectable()
 export class ReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recoveryService: RecoveryService,
+  ) {}
 
   async getShortListReport(user: AuthUser, query: DateRangeQueryDto) {
     const shopId = requireShopId(user);
@@ -283,43 +289,84 @@ export class ReportService {
     const shopId = requireShopId(user);
     const { accountDate } = parseDateRange(query);
 
+    /** صرف فعال مارکیٹ — نل / بند کھاتے رپورٹ میں نہیں */
     const leases = await this.prisma.leaseAccount.findMany({
       where: {
         shopId,
+        status: LeaseStatus.ACTIVE,
+        remainingBalance: { gt: 0 },
         ...(accountDate ? { accountDate } : {}),
         ...(query.recoveryManId ? { recoveryManId: query.recoveryManId } : {}),
+        ...(query.salesmanId ? { salesmanId: query.salesmanId } : {}),
+        ...(query.outdoorManId ? { outdoorManId: query.outdoorManId } : {}),
       },
       orderBy: [{ accountDate: 'desc' }, { accountNumber: 'desc' }],
       include: {
-        customer: { select: { name: true, mobile: true } },
+        customer: {
+          select: {
+            name: true,
+            mobile: true,
+            fatherOrHusbandName: true,
+            presentAddress: true,
+          },
+        },
         salesman: { select: { id: true, name: true } },
         recoveryMan: { select: { id: true, name: true } },
+        outdoorMan: { select: { id: true, name: true } },
         leaseItems: {
           select: { itemName: true, quantity: true, totalAmount: true },
         },
       },
     });
 
-    const rows = leases.map((lease) => ({
-      id: lease.id,
-      accountNumber: lease.accountNumber,
-      accountDate: lease.accountDate,
-      customerName: lease.customer.name,
-      customerMobile: lease.customer.mobile,
-      salesman: lease.salesman,
-      recoveryMan: lease.recoveryMan,
-      totalAmount: toNumber(lease.totalAmount),
-      advanceAmount: toNumber(lease.advanceAmount),
-      remainingBalance: toNumber(lease.remainingBalance),
-      installmentCount: lease.installmentCount,
-      status: lease.status,
-      itemsSummary: lease.leaseItems
-        .map((i) => `${i.itemName} x${i.quantity}`)
-        .join(', '),
-    }));
+    const rows = leases.map((lease) => {
+      const remainingBalance = toNumber(lease.remainingBalance);
+      const installmentAmount =
+        remainingBalance > 0 ? toNumber(lease.currentInstallmentAmount) : 0;
+      return {
+        id: lease.id,
+        accountNumber: lease.accountNumber,
+        accountDate: lease.accountDate,
+        customerName: lease.customer.name,
+        customerMobile: lease.customer.mobile,
+        fatherOrHusbandName: lease.customer.fatherOrHusbandName,
+        presentAddress: lease.customer.presentAddress,
+        salesman: lease.salesman,
+        recoveryMan: lease.recoveryMan,
+        outdoorMan: lease.outdoorMan,
+        totalAmount: roundMoney(toNumber(lease.totalAmount)),
+        advanceAmount: roundMoney(toNumber(lease.advanceAmount)),
+        remainingBalance: roundMoney(remainingBalance),
+        installmentAmount: roundMoney(installmentAmount),
+        installmentCount: lease.installmentCount,
+        status: lease.status,
+        itemsSummary: lease.leaseItems
+          .map((i) => `${i.itemName} x${i.quantity}`)
+          .join(', '),
+      };
+    });
 
     const totalSales = roundMoney(rows.reduce((sum, r) => sum + r.totalAmount, 0));
-    return { rows, summary: { count: rows.length, totalSales } };
+    const totalAdvance = roundMoney(
+      rows.reduce((sum, r) => sum + (Number.isFinite(r.advanceAmount) ? r.advanceAmount : 0), 0),
+    );
+    const totalInstallment = roundMoney(
+      rows.reduce((sum, r) => sum + (Number.isFinite(r.installmentAmount) ? r.installmentAmount : 0), 0),
+    );
+    const totalRemaining = roundMoney(
+      rows.reduce((sum, r) => sum + (Number.isFinite(r.remainingBalance) ? r.remainingBalance : 0), 0),
+    );
+
+    return {
+      rows,
+      summary: {
+        count: rows.length,
+        totalSales,
+        totalAdvance,
+        totalInstallment,
+        totalRemaining,
+      },
+    };
   }
 
   async getBillProfitReport(user: AuthUser, query: DateRangeQueryDto) {
@@ -373,6 +420,141 @@ export class ReportService {
     return {
       rows,
       summary: { count: rows.length, totalSales, totalProfit },
+    };
+  }
+
+  async getDailySummary(user: AuthUser, dateInput?: string) {
+    const shopId = requireShopId(user);
+    const shop = await this.prisma.shop.findFirst({
+      where: { id: shopId },
+      select: { name: true },
+    });
+    if (!shop) {
+      throw new NotFoundException(MESSAGES.NOT_FOUND('Shop'));
+    }
+
+    const baseDate = dateInput ? new Date(dateInput) : new Date();
+    if (Number.isNaN(baseDate.getTime())) {
+      throw new BadRequestException('Invalid date');
+    }
+
+    const dayStart = startOfDay(baseDate);
+    const dayEnd = endOfDay(baseDate);
+
+    const tomorrow = new Date(baseDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStart = startOfDay(tomorrow);
+    const tomorrowEnd = endOfDay(tomorrow);
+
+    const pendingStatuses = [
+      InstallmentStatus.PENDING,
+      InstallmentStatus.PARTIAL,
+      InstallmentStatus.OVERDUE,
+    ];
+
+    const dashboard = await this.recoveryService.getDashboardStats(user);
+
+    const [newSales, tomorrowDueRows, lateInstallments] = await Promise.all([
+      this.prisma.leaseAccount.aggregate({
+        where: {
+          shopId,
+          accountDate: { gte: dayStart, lte: dayEnd },
+        },
+        _count: true,
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.installmentSchedule.findMany({
+        where: {
+          dueDate: { gte: tomorrowStart, lte: tomorrowEnd },
+          status: { in: pendingStatuses },
+          leaseAccount: { shopId, status: LeaseStatus.ACTIVE },
+        },
+        select: { scheduledAmount: true, paidAmount: true },
+      }),
+      this.prisma.installmentSchedule.findMany({
+        where: {
+          leaseAccount: { shopId, status: LeaseStatus.ACTIVE },
+          OR: [
+            { status: InstallmentStatus.OVERDUE },
+            {
+              dueDate: { lt: dayStart },
+              status: { in: [InstallmentStatus.PENDING, InstallmentStatus.PARTIAL] },
+            },
+          ],
+        },
+        select: {
+          scheduledAmount: true,
+          paidAmount: true,
+          leaseAccount: {
+            select: {
+              id: true,
+              accountNumber: true,
+              customer: { select: { name: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const tomorrowDueAmount = roundMoney(
+      tomorrowDueRows.reduce((sum, row) => {
+        const owed = Math.max(0, toNumber(row.scheduledAmount) - toNumber(row.paidAmount));
+        return sum + owed;
+      }, 0),
+    );
+
+    const lateByLease = new Map<
+      string,
+      { name: string; accountNumber: number; owedAmount: number }
+    >();
+
+    for (const row of lateInstallments) {
+      const owed = Math.max(0, toNumber(row.scheduledAmount) - toNumber(row.paidAmount));
+      if (owed <= 0) continue;
+      const leaseId = row.leaseAccount.id;
+      const existing = lateByLease.get(leaseId);
+      if (existing) {
+        existing.owedAmount = roundMoney(existing.owedAmount + owed);
+      } else {
+        lateByLease.set(leaseId, {
+          name: row.leaseAccount.customer.name,
+          accountNumber: row.leaseAccount.accountNumber,
+          owedAmount: roundMoney(owed),
+        });
+      }
+    }
+
+    const topLateCustomers = [...lateByLease.values()]
+      .sort((a, b) => b.owedAmount - a.owedAmount)
+      .slice(0, 5);
+
+    const dateIso = dayStart.toISOString().slice(0, 10);
+    const stats = {
+      todayCollectionCount: dashboard.todayCollectionCount,
+      todayCollectionAmount: dashboard.todayCollectionAmount,
+      todayDueCount: dashboard.todayDueCount,
+      overdueCount: dashboard.overdueCount,
+      defaultedAccountsCount: dashboard.defaultedAccountsCount,
+      pendingReminderCount: dashboard.pendingReminderCount,
+      newSalesCount: newSales._count,
+      newSalesAmount: roundMoney(toNumber(newSales._sum.totalAmount ?? 0)),
+      tomorrowDueCount: tomorrowDueRows.length,
+      tomorrowDueAmount,
+    };
+
+    const paragraphUrdu = buildDailySummaryParagraph(
+      shop.name,
+      dateIso,
+      stats,
+      topLateCustomers,
+    );
+
+    return {
+      date: dateIso,
+      shopName: shop.name,
+      stats,
+      topLateCustomers,
+      paragraphUrdu,
     };
   }
 }

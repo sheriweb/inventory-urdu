@@ -2,24 +2,20 @@
 
 import { MessageCircle, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { telHref, whatsAppHref } from '@/lib/phone';
+import { telHref, whatsAppSendHref } from '@/lib/phone';
 
 type PhoneActionsProps = {
   mobile?: string | null;
+  additionalMobiles?: string[];
   className?: string;
   compact?: boolean;
 };
 
-export function PhoneActions({ mobile, className, compact = false }: PhoneActionsProps) {
-  if (!mobile?.trim()) {
-    return <span className="text-slate-400">—</span>;
-  }
-
+function PhoneLine({ mobile, compact }: { mobile: string; compact?: boolean }) {
   const tel = telHref(mobile);
-  const wa = whatsAppHref(mobile);
-
+  const wa = whatsAppSendHref(mobile);
   return (
-    <span className={cn('inline-flex flex-wrap items-center gap-1.5', className)}>
+    <span className="inline-flex flex-wrap items-center gap-1">
       {tel ? (
         <a
           href={tel}
@@ -48,6 +44,30 @@ export function PhoneActions({ mobile, className, compact = false }: PhoneAction
           واٹس ایپ
         </a>
       ) : null}
+    </span>
+  );
+}
+
+export function PhoneActions({
+  mobile,
+  additionalMobiles = [],
+  className,
+  compact = false,
+}: PhoneActionsProps) {
+  const phones = [
+    mobile?.trim() ?? '',
+    ...additionalMobiles.map((m) => m.trim()).filter(Boolean),
+  ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+  if (phones.length === 0) {
+    return <span className="text-slate-400">—</span>;
+  }
+
+  return (
+    <span className={cn('flex flex-col gap-1', className)}>
+      {phones.map((phone) => (
+        <PhoneLine key={phone} mobile={phone} compact={compact} />
+      ))}
     </span>
   );
 }

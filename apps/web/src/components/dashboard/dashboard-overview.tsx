@@ -9,6 +9,7 @@ import { fmtMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { Button } from '@/components/ui/button';
+import { DailySummaryCard } from '@/components/dashboard/daily-summary-card';
 
 type DashboardStats = {
   todayCollectionCount: number;
@@ -17,6 +18,17 @@ type DashboardStats = {
   overdueCount: number;
   defaultedAccountsCount?: number;
   pendingReminderCount?: number;
+  newSalesCount?: number;
+  newSalesAmount?: number;
+  tomorrowDueCount?: number;
+  tomorrowDueAmount?: number;
+};
+
+type DailySummaryResponse = {
+  date: string;
+  shopName: string;
+  stats: DashboardStats;
+  paragraphUrdu: string;
 };
 
 function todayIsoDate(): string {
@@ -33,8 +45,8 @@ function startOfToday(): Date {
   return d;
 }
 
-/** Fallback when /recovery/dashboard-stats is unavailable (older API build). */
-async function loadStatsFromLegacyApis(): Promise<DashboardStats> {
+/** Fallback when /reports/daily-summary is unavailable (older API build). */
+async function loadStatsFromLegacyApis(): Promise<{ stats: DashboardStats; paragraphUrdu: string }> {
   const iso = todayIsoDate();
   const dayStart = startOfToday();
 
@@ -51,7 +63,8 @@ async function loadStatsFromLegacyApis(): Promise<DashboardStats> {
   const todayCollectionCount = installmentPayments.length;
   const todayCollectionAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const list = (listRes.data.data ?? []) as ListRow[];
+  const listPayload = listRes.data.data as ListRow[] | { rows?: ListRow[] };
+  const list = Array.isArray(listPayload) ? listPayload : (listPayload.rows ?? []);
   let todayDueCount = 0;
   let overdueCount = 0;
 
@@ -65,7 +78,7 @@ async function loadStatsFromLegacyApis(): Promise<DashboardStats> {
     }
   }
 
-  return {
+  const stats: DashboardStats = {
     todayCollectionCount,
     todayCollectionAmount,
     todayDueCount,
@@ -73,10 +86,19 @@ async function loadStatsFromLegacyApis(): Promise<DashboardStats> {
     defaultedAccountsCount: 0,
     pendingReminderCount: 0,
   };
+
+  const paragraphUrdu = [
+    'روزانہ خلاصہ (محدود — API اپڈیٹ کریں)',
+    `وصولی: ${todayCollectionCount} — Rs ${fmtMoney(todayCollectionAmount)}`,
+    `واجب: ${todayDueCount} | تاخیر: ${overdueCount}`,
+  ].join('\n');
+
+  return { stats, paragraphUrdu };
 }
 
 export function DashboardOverview() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [paragraphUrdu, setParagraphUrdu] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -84,13 +106,19 @@ export function DashboardOverview() {
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.get('/recovery/dashboard-stats');
-      setStats(data.data as DashboardStats);
+      const { data } = await api.get('/reports/daily-summary');
+      const summary = data.data as DailySummaryResponse;
+      setStats(summary.stats);
+      setParagraphUrdu(summary.paragraphUrdu);
     } catch (err) {
       const status = (err as AxiosError)?.response?.status;
       if (status === 404) {
         try {
-          setStats(await loadStatsFromLegacyApis());
+          const { data } = await api.get('/recovery/dashboard-stats');
+          const legacyStats = data.data as DashboardStats;
+          setStats(legacyStats);
+          const legacy = await loadStatsFromLegacyApis();
+          setParagraphUrdu(legacy.paragraphUrdu);
           return;
         } catch {
           setError('آج کا خلاصہ لوڈ نہیں ہو سکا — API دوبارہ شروع کریں');
@@ -124,13 +152,15 @@ export function DashboardOverview() {
           <Link href="/dashboard/leases/new">
             <Button size="sm" className="gap-1.5">
               <Banknote className="h-4 w-4" />
-              نیا کھاتہ
+              نئی فروخت
             </Button>
           </Link>
         </div>
       </div>
 
       {error ? <AlertBanner onRetry={load}>{error}</AlertBanner> : null}
+
+      <DailySummaryCard paragraph={paragraphUrdu} loading={loading} onRefresh={load} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <Card>
@@ -150,6 +180,21 @@ export function DashboardOverview() {
 
         <Card>
           <CardContent className="flex items-start gap-3 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+              <Banknote className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500">نئی فروخت</p>
+              <p className="text-xl font-bold text-slate-900">{loading ? '…' : (stats?.newSalesCount ?? 0)}</p>
+              <p className="text-xs text-indigo-700" dir="ltr">
+                {loading ? '…' : fmtMoney(stats?.newSalesAmount ?? 0)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex items-start gap-3 p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
               <CalendarClock className="h-5 w-5" />
             </div>
@@ -159,6 +204,21 @@ export function DashboardOverview() {
               <Link href="/dashboard/recovery" className="text-xs text-sky-700 hover:underline">
                 وصولی کھولیں
               </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex items-start gap-3 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+              <CalendarClock className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-500">کل واجب</p>
+              <p className="text-xl font-bold text-slate-900">{loading ? '…' : (stats?.tomorrowDueCount ?? 0)}</p>
+              <p className="text-xs text-violet-700" dir="ltr">
+                {loading ? '…' : fmtMoney(stats?.tomorrowDueAmount ?? 0)}
+              </p>
             </div>
           </CardContent>
         </Card>

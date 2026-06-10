@@ -1,0 +1,13 @@
+---
+# cPanel Git → Deploy HEAD commit triggers these tasks (jailshell required).
+deployment:
+  tasks:
+    - export PATH="/opt/alt/alt-nodejs20/root/usr/bin:$PATH"
+    - cd /home/leasings/inventory-urdu
+    - test -f leasing-store-production.env || cp deploy/leasing-store-production.env.example leasing-store-production.env
+    - test -f apps/api/.env || cp leasing-store-production.env apps/api/.env
+    - /bin/rm -f .maintenance
+    - npm install --include=dev --no-audit --no-fund
+    - npm run db:generate -w @inventory-urdu/api
+    - /bin/mkdir -p tmp
+    - /usr/bin/touch tmp/restart.txt

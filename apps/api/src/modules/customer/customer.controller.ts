@@ -34,6 +34,13 @@ export class CustomerController {
     return { message: MESSAGES.LIST_FETCHED('Customer'), data: result.data };
   }
 
+  @Get(':id/sale-hints')
+  @Auth(...SHOP_READ_ROLES)
+  async saleHints(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    const data = await this.customerService.getSaleHints(user, id);
+    return { message: MESSAGES.FETCHED('Customer sale hints'), data };
+  }
+
   @Get(':id')
   @Auth(...SHOP_READ_ROLES)
   async getOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {

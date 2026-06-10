@@ -14,6 +14,7 @@ type ImageUploadProps = {
   hint?: string;
   className?: string;
   aspect?: 'card' | 'wide';
+  disabled?: boolean;
 };
 
 async function compressImage(file: File, maxSize = 1600, quality = 0.82): Promise<File> {
@@ -69,6 +70,7 @@ export function ImageUpload({
   hint,
   className,
   aspect = 'card',
+  disabled = false,
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -109,6 +111,7 @@ export function ImageUpload({
   );
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (disabled) return;
     const file = e.target.files?.[0];
     if (file) void uploadFile(file);
   }
@@ -117,6 +120,7 @@ export function ImageUpload({
     e.preventDefault();
     e.stopPropagation();
     setDragging(false);
+    if (disabled) return;
     const file = e.dataTransfer.files?.[0];
     if (file) void uploadFile(file);
   }
@@ -152,8 +156,9 @@ export function ImageUpload({
             </span>
             <button
               type="button"
+              disabled={disabled}
               onClick={() => onChange('')}
-              className="rounded-lg bg-white/90 p-1.5 text-slate-700 shadow hover:bg-white"
+              className="rounded-lg bg-white/90 p-1.5 text-slate-700 shadow hover:bg-white disabled:opacity-50"
               aria-label="تصویر ہٹائیں"
             >
               <X className="h-4 w-4" />
@@ -161,9 +166,9 @@ export function ImageUpload({
           </div>
           <button
             type="button"
-            disabled={uploading}
+            disabled={uploading || disabled}
             onClick={() => inputRef.current?.click()}
-            className="absolute inset-x-3 bottom-3 rounded-lg border border-white/60 bg-white/90 py-1.5 text-xs font-medium text-slate-700 opacity-0 shadow transition group-hover:opacity-100 hover:bg-white"
+            className="absolute inset-x-3 bottom-3 rounded-lg border border-white/60 bg-white/90 py-1.5 text-xs font-medium text-slate-700 opacity-0 shadow transition group-hover:opacity-100 hover:bg-white disabled:opacity-50"
           >
             تصویر بدلیں
           </button>
@@ -171,7 +176,7 @@ export function ImageUpload({
       ) : (
         <button
           type="button"
-          disabled={uploading}
+          disabled={uploading || disabled}
           onClick={() => inputRef.current?.click()}
           onDragEnter={(e) => {
             e.preventDefault();

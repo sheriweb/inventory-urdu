@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
+import { getApiBaseUrl } from './api';
+
+const API_BASE = getApiBaseUrl();
 
 export function resolveImageUrl(url: string | null | undefined): string {
   if (!url) return '';

@@ -19,9 +19,9 @@ import {
   TrendingUp,
   Percent,
   Banknote,
+  ShoppingCart,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { DashboardOverview } from '@/components/dashboard/dashboard-overview';
 import { cn } from '@/lib/utils';
 
 type DashboardCard = {
@@ -33,8 +33,15 @@ type DashboardCard = {
 };
 
 const DAILY_LINKS: DashboardCard[] = [
+  {
+    label: 'نئی فروخت',
+    href: '/dashboard/leases/new',
+    icon: ShoppingCart,
+    desc: 'بائیک، موبائل وغیرہ — قسط یا نقد فروخت',
+    accent: 'brand',
+  },
   { label: 'گاہک', href: '/dashboard/customers', icon: UserCircle, desc: 'گاہک اور ضمانتی شامل / تلاش' },
-  { label: 'کھاتے', href: '/dashboard/accounts', icon: CreditCard, desc: 'قسطی کھاتے، فلٹر اور نیا کھاتہ' },
+  { label: 'کھاتے', href: '/dashboard/accounts', icon: CreditCard, desc: 'قسطی کھاتے، فلٹر اور تفصیل' },
   { label: 'وصولی', href: '/dashboard/recovery', icon: Wallet, desc: 'ریکوری لسٹ، قسط وصولی، ادائیگیاں' },
   { label: 'قسطیں', href: '/dashboard/installments', icon: ListOrdered, desc: 'شارٹ لسٹ اور شیڈول اپڈیٹ' },
   { label: 'اسٹاک', href: '/dashboard/stock', icon: Warehouse, desc: 'گودام اسٹاک دیکھیں اور شامل کریں' },
@@ -87,8 +94,6 @@ function DashboardActionCard({ label, href, icon: Icon, desc, accent = 'brand' }
 export default function DashboardPage() {
   return (
     <div className="space-y-8">
-      <DashboardOverview />
-
       <section>
         <h2 className="mb-1 text-sm font-semibold text-slate-600">روزمرہ کام</h2>
         <p className="mb-3 text-xs text-slate-500">سب سے زیادہ استعمال ہونے والے صفحات</p>

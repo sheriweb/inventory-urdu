@@ -1,12 +1,13 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Boxes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { login } from '@/lib/auth';
+import { fetchMe, login } from '@/lib/auth';
+import { hasStoredSession } from '@/lib/api';
 import { defaultPathAfterLogin } from '@/lib/roles';
 
 export default function LoginPage() {
@@ -15,6 +16,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showDemoHints, setShowDemoHints] = useState(false);
+
+  useEffect(() => {
+    setShowDemoHints(true);
+    if (!hasStoredSession()) return;
+    fetchMe(true).then((user) => {
+      if (user) {
+        router.replace(defaultPathAfterLogin(user));
+      }
+    });
+  }, [router]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -86,11 +98,12 @@ export default function LoginPage() {
                 {loading ? 'براہ کرم انتظار کریں...' : 'داخل ہوں'}
               </Button>
             </form>
-            <p className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/80 p-3 text-center text-sm text-slate-600" dir="ltr">
-              Shop: shop@inventory.local / Shop123!
-              <br />
-              Admin: admin@inventory.local / Admin123!
-            </p>
+            {showDemoHints ? (
+              <p className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/80 p-3 text-center text-sm text-slate-600" dir="ltr">
+                <span className="block">Shop 1: shop1@inventory.local / Shop1Demo!</span>
+                <span className="block">Shop 2: shop2@inventory.local / Shop2Demo!</span>
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       </main>

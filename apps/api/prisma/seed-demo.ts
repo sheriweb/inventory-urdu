@@ -84,12 +84,22 @@ function generateSchedule(params: {
   return installments;
 }
 
+export type DemoSeedOptions = {
+  variant?: number;
+  accountNumberOffset?: number;
+  cityLabel?: string;
+};
+
 export async function seedDemoData(
   prisma: PrismaClient,
   shopId: string,
   operatorUserId: string,
   force = false,
+  options: DemoSeedOptions = {},
 ) {
+  const variant = options.variant ?? 1;
+  const accountOffset = options.accountNumberOffset ?? 0;
+  const cityLabel = options.cityLabel ?? 'لاہور';
   const existingAreas = await prisma.area.count({ where: { shopId } });
   if (existingAreas > 0 && !force) {
     console.log('Demo data already exists — skipping (set FORCE_DEMO_SEED=1 to re-seed)');
@@ -117,40 +127,67 @@ export async function seedDemoData(
     ]);
   }
 
-  const area1 = await prisma.area.create({
-    data: { shopId, name: 'گلberg', city: 'لاہور' },
-  });
-  const area2 = await prisma.area.create({
-    data: { shopId, name: 'ماڈل ٹاؤن', city: 'لاہور' },
-  });
-  const area3 = await prisma.area.create({
-    data: { shopId, name: 'صدر', city: 'راولپنڈی' },
-  });
+  const areaNames =
+    variant === 2
+      ? [
+          { name: 'سaddar', city: cityLabel },
+          { name: 'بھارہ کہو', city: cityLabel },
+          { name: 'فیصل ٹاؤن', city: 'اسلام آباد' },
+        ]
+      : [
+          { name: 'گلberg', city: cityLabel },
+          { name: 'ماڈل ٹاؤن', city: cityLabel },
+          { name: 'صدر', city: 'راولپنڈی' },
+        ];
+
+  const area1 = await prisma.area.create({ data: { shopId, name: areaNames[0].name, city: areaNames[0].city } });
+  const area2 = await prisma.area.create({ data: { shopId, name: areaNames[1].name, city: areaNames[1].city } });
+  const area3 = await prisma.area.create({ data: { shopId, name: areaNames[2].name, city: areaNames[2].city } });
+
+  const staffNames =
+    variant === 2
+      ? { salesman: 'کامران شاہ', recovery: 'ناصر محمود', outdoor: 'جاوید اقبال', salesman2: 'شہباز علی' }
+      : { salesman: 'احمد علی', recovery: 'بابر حسین', outdoor: 'چaudhry کاشف', salesman2: 'دانish خان' };
 
   const salesman = await prisma.staff.create({
-    data: { shopId, areaId: area1.id, name: 'احمد علی', mobile: '03001234567', type: StaffType.SALESMAN },
+    data: { shopId, areaId: area1.id, name: staffNames.salesman, mobile: `0300${variant}1234567`, type: StaffType.SALESMAN },
   });
   const recoveryMan = await prisma.staff.create({
-    data: { shopId, areaId: area1.id, name: 'بابر حسین', mobile: '03007654321', type: StaffType.RECOVERY_MAN },
+    data: { shopId, areaId: area1.id, name: staffNames.recovery, mobile: `0300${variant}7654321`, type: StaffType.RECOVERY_MAN },
   });
   const outdoorMan = await prisma.staff.create({
-    data: { shopId, areaId: area2.id, name: 'چaudhry کاشف', mobile: '03111234567', type: StaffType.OUTDOOR_MAN },
+    data: { shopId, areaId: area2.id, name: staffNames.outdoor, mobile: `0311${variant}1234567`, type: StaffType.OUTDOOR_MAN },
   });
   const salesman2 = await prisma.staff.create({
-    data: { shopId, areaId: area3.id, name: 'دانish خان', mobile: '03221234567', type: StaffType.SALESMAN },
+    data: { shopId, areaId: area3.id, name: staffNames.salesman2, mobile: `0322${variant}1234567`, type: StaffType.SALESMAN },
   });
 
-  const company1 = await prisma.company.create({ data: { shopId, name: 'Samsung Pakistan' } });
-  const company2 = await prisma.company.create({ data: { shopId, name: 'Haier' } });
-  const company3 = await prisma.company.create({ data: { shopId, name: 'Orient' } });
+  const companies =
+    variant === 2
+      ? ['LG Pakistan', 'Dawlance', 'PEL']
+      : ['Samsung Pakistan', 'Haier', 'Orient'];
 
-  const itemsData = [
-    { code: 1, companyId: company1.id, name: 'Samsung A15', model: 'A15 128GB', purchase: 42000, sale: 52000, stock: 25 },
-    { code: 2, companyId: company1.id, name: 'Samsung A05', model: 'A05 64GB', purchase: 18000, sale: 24000, stock: 40 },
-    { code: 3, companyId: company2.id, name: 'Haier Fridge', model: 'HRF-336', purchase: 65000, sale: 85000, stock: 8 },
-    { code: 4, companyId: company3.id, name: 'Orient Fan', model: 'OF-52', purchase: 4500, sale: 6500, stock: 60 },
-    { code: 5, companyId: company3.id, name: 'Orient AC', model: '1.5 Ton', purchase: 95000, sale: 125000, stock: 5 },
-  ];
+  const company1 = await prisma.company.create({ data: { shopId, name: companies[0] } });
+  const company2 = await prisma.company.create({ data: { shopId, name: companies[1] } });
+  const company3 = await prisma.company.create({ data: { shopId, name: companies[2] } });
+
+  const codeBase = variant * 100;
+  const itemsData =
+    variant === 2
+      ? [
+          { code: codeBase + 1, companyId: company1.id, name: 'LG LED TV', model: '43 Inch', purchase: 55000, sale: 72000, stock: 12 },
+          { code: codeBase + 2, companyId: company1.id, name: 'LG Washing Machine', model: '7kg', purchase: 38000, sale: 48000, stock: 15 },
+          { code: codeBase + 3, companyId: company2.id, name: 'Dawlance Fridge', model: 'DF-400', purchase: 72000, sale: 92000, stock: 6 },
+          { code: codeBase + 4, companyId: company3.id, name: 'PEL Cooler', model: 'PC-200', purchase: 12000, sale: 16000, stock: 35 },
+          { code: codeBase + 5, companyId: company3.id, name: 'PEL Microwave', model: 'PM-30', purchase: 22000, sale: 28000, stock: 18 },
+        ]
+      : [
+          { code: codeBase + 1, companyId: company1.id, name: 'Samsung A15', model: 'A15 128GB', purchase: 42000, sale: 52000, stock: 25 },
+          { code: codeBase + 2, companyId: company1.id, name: 'Samsung A05', model: 'A05 64GB', purchase: 18000, sale: 24000, stock: 40 },
+          { code: codeBase + 3, companyId: company2.id, name: 'Haier Fridge', model: 'HRF-336', purchase: 65000, sale: 85000, stock: 8 },
+          { code: codeBase + 4, companyId: company3.id, name: 'Orient Fan', model: 'OF-52', purchase: 4500, sale: 6500, stock: 60 },
+          { code: codeBase + 5, companyId: company3.id, name: 'Orient AC', model: '1.5 Ton', purchase: 95000, sale: 125000, stock: 5 },
+        ];
 
   const items = [];
   for (const row of itemsData) {
@@ -186,13 +223,22 @@ export async function seedDemoData(
   }
 
   const customers = [];
-  const customerSpecs = [
-    { name: 'محمد عمر', father: 'محمد اکرم', areaId: area1.id, mobile: '03331234567', cnic: '3520212345671' },
-    { name: 'عائشہ بی بی', father: 'عبدالرحمن', areaId: area1.id, mobile: '03337654321', cnic: '3520298765432' },
-    { name: 'زain علی', father: 'طارق محمود', areaId: area2.id, mobile: '03451234567', cnic: '3520312345673' },
-    { name: 'فاطمہ خان', father: 'امjad خان', areaId: area2.id, mobile: '03457654321', cnic: '3520398765434' },
-    { name: 'Usman Sheikh', father: 'Sheikh Nadeem', areaId: area3.id, mobile: '03151234567', cnic: '3520412345675' },
-  ];
+  const customerSpecs =
+    variant === 2
+      ? [
+          { name: 'راشد محمود', father: 'محمود حسن', areaId: area1.id, mobile: '03332234567', cnic: '3740212345671' },
+          { name: 'سارہ بی بی', father: 'خلیل احمد', areaId: area1.id, mobile: '03337654322', cnic: '3740298765432' },
+          { name: 'عمران ملک', father: 'ملک جاوید', areaId: area2.id, mobile: '03452234567', cnic: '3740312345673' },
+          { name: 'نادیہ شاہ', father: 'شاہد علی', areaId: area2.id, mobile: '03457654322', cnic: '3740398765434' },
+          { name: 'Hamza Butt', father: 'Butt Sajid', areaId: area3.id, mobile: '03152234567', cnic: '3740412345675' },
+        ]
+      : [
+          { name: 'محمد عمر', father: 'محمد اکرم', areaId: area1.id, mobile: '03331234567', cnic: '3520212345671' },
+          { name: 'عائشہ بی بی', father: 'عبدالرحمن', areaId: area1.id, mobile: '03337654321', cnic: '3520298765432' },
+          { name: 'زain علی', father: 'طارق محمود', areaId: area2.id, mobile: '03451234567', cnic: '3520312345673' },
+          { name: 'فاطمہ خان', father: 'امjad خان', areaId: area2.id, mobile: '03457654321', cnic: '3520398765434' },
+          { name: 'Usman Sheikh', father: 'Sheikh Nadeem', areaId: area3.id, mobile: '03151234567', cnic: '3520412345675' },
+        ];
 
   for (const spec of customerSpecs) {
     const customer = await prisma.customer.create({
@@ -234,44 +280,24 @@ export async function seedDemoData(
     payInstallments: number;
   };
 
-  const leaseSpecs: LeaseSpec[] = [
-    {
-      customerIdx: 0,
-      accountNumber: 1001,
-      total: 52000,
-      advance: 5000,
-      installment: 2000,
-      frequency: InstallmentFrequency.WEEKLY,
-      startDaysAgo: 45,
-      itemIdx: 0,
-      qty: 1,
-      payInstallments: 4,
-    },
-    {
-      customerIdx: 1,
-      accountNumber: 1002,
-      total: 6500,
-      advance: 1000,
-      installment: 500,
-      frequency: InstallmentFrequency.DAILY,
-      startDaysAgo: 20,
-      itemIdx: 3,
-      qty: 1,
-      payInstallments: 8,
-    },
-    {
-      customerIdx: 2,
-      accountNumber: 1003,
-      total: 85000,
-      advance: 10000,
-      installment: 5000,
-      frequency: InstallmentFrequency.MONTHLY,
-      startDaysAgo: 90,
-      itemIdx: 2,
-      qty: 1,
-      payInstallments: 2,
-    },
-  ];
+  const leaseTotals =
+    variant === 2
+      ? [
+          { customerIdx: 0, accountNumber: accountOffset + 2001, total: 72000, advance: 8000, installment: 3000, frequency: InstallmentFrequency.WEEKLY, startDaysAgo: 50, itemIdx: 0, qty: 1, payInstallments: 5 },
+          { customerIdx: 1, accountNumber: accountOffset + 2002, total: 16000, advance: 2000, installment: 800, frequency: InstallmentFrequency.DAILY, startDaysAgo: 25, itemIdx: 3, qty: 2, payInstallments: 10 },
+          { customerIdx: 2, accountNumber: accountOffset + 2003, total: 92000, advance: 12000, installment: 6000, frequency: InstallmentFrequency.MONTHLY, startDaysAgo: 100, itemIdx: 2, qty: 1, payInstallments: 3 },
+          { customerIdx: 3, accountNumber: accountOffset + 2004, total: 48000, advance: 5000, installment: 2500, frequency: InstallmentFrequency.FIFTEEN_DAYS, startDaysAgo: 35, itemIdx: 1, qty: 1, payInstallments: 4 },
+          { customerIdx: 4, accountNumber: accountOffset + 2005, total: 28000, advance: 3000, installment: 1500, frequency: InstallmentFrequency.WEEKLY, startDaysAgo: 15, itemIdx: 4, qty: 1, payInstallments: 3 },
+        ]
+      : [
+          { customerIdx: 0, accountNumber: accountOffset + 1001, total: 52000, advance: 5000, installment: 2000, frequency: InstallmentFrequency.WEEKLY, startDaysAgo: 45, itemIdx: 0, qty: 1, payInstallments: 4 },
+          { customerIdx: 1, accountNumber: accountOffset + 1002, total: 6500, advance: 1000, installment: 500, frequency: InstallmentFrequency.DAILY, startDaysAgo: 20, itemIdx: 3, qty: 1, payInstallments: 8 },
+          { customerIdx: 2, accountNumber: accountOffset + 1003, total: 85000, advance: 10000, installment: 5000, frequency: InstallmentFrequency.MONTHLY, startDaysAgo: 90, itemIdx: 2, qty: 1, payInstallments: 2 },
+          { customerIdx: 3, accountNumber: accountOffset + 1004, total: 24000, advance: 3000, installment: 1200, frequency: InstallmentFrequency.FIFTEEN_DAYS, startDaysAgo: 30, itemIdx: 1, qty: 1, payInstallments: 5 },
+          { customerIdx: 4, accountNumber: accountOffset + 1005, total: 125000, advance: 15000, installment: 8000, frequency: InstallmentFrequency.MONTHLY, startDaysAgo: 60, itemIdx: 4, qty: 1, payInstallments: 2 },
+        ];
+
+  const leaseSpecs: LeaseSpec[] = leaseTotals;
 
   let receiptNumber = 1;
 
@@ -388,6 +414,26 @@ export async function seedDemoData(
   await prisma.item.update({
     where: { id: items[1].id },
     data: { stockQuantity: { decrement: 10 } },
+  });
+
+  await prisma.stockMovement.create({
+    data: {
+      shopId,
+      itemId: items[1].id,
+      staffId: salesman.id,
+      type: StockMovementType.UNLOAD,
+      quantity: 3,
+      movementDate: daysAgo(2),
+      note: 'سیلزمین ان لوڈنگ',
+    },
+  });
+  await prisma.salesmanStock.update({
+    where: { shopId_staffId_itemId: { shopId, staffId: salesman.id, itemId: items[1].id } },
+    data: { quantity: { decrement: 3 } },
+  });
+  await prisma.item.update({
+    where: { id: items[1].id },
+    data: { stockQuantity: { increment: 3 } },
   });
 
   await prisma.claim.create({

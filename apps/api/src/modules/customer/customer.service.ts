@@ -7,6 +7,23 @@ import { buildPagination, ListQueryDto } from '../../common/dto/list-query.dto';
 import { requireShopId } from '../../common/utils';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto';
 
+function toNum(value: Prisma.Decimal | number): number {
+  return typeof value === 'number' ? value : Number(value);
+}
+
+function sanitizeAdditionalMobiles(values?: string[]): string[] {
+  if (!values?.length) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const trimmed = raw?.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 const customerInclude = {
   area: { select: { id: true, name: true, city: true } },
   guarantors: { orderBy: { createdAt: 'desc' as const } },
@@ -23,21 +40,51 @@ export class CustomerService {
     }
   }
 
+  private async assertMobilesAvailable(
+    shopId: string,
+    mobile?: string,
+    additionalMobiles?: string[],
+    excludeCustomerId?: string,
+  ) {
+    const phones = [
+      mobile?.trim(),
+      ...sanitizeAdditionalMobiles(additionalMobiles),
+    ].filter((v): v is string => Boolean(v));
+
+    const unique = new Set(phones);
+    if (unique.size !== phones.length) {
+      throw new ConflictException('موبائل نمبر دہرائے گئے ہیں');
+    }
+
+    const customers = await this.prisma.customer.findMany({
+      where: {
+        shopId,
+        isActive: true,
+        ...(excludeCustomerId ? { id: { not: excludeCustomerId } } : {}),
+      },
+      select: { name: true, mobile: true, additionalMobiles: true },
+    });
+
+    for (const phone of phones) {
+      for (const customer of customers) {
+        const extras = Array.isArray(customer.additionalMobiles)
+          ? customer.additionalMobiles.filter((v): v is string => typeof v === 'string')
+          : [];
+        if (customer.mobile === phone || extras.includes(phone)) {
+          throw new ConflictException(`یہ موبائل پہلے سے رجسٹر ہے — گاہک: ${customer.name}`);
+        }
+      }
+    }
+  }
+
   async create(user: AuthUser, dto: CreateCustomerDto) {
     const shopId = requireShopId(user);
     if (dto.areaId) {
       await this.assertAreaInShop(shopId, dto.areaId);
     }
 
-    if (dto.mobile?.trim()) {
-      const existingMobile = await this.prisma.customer.findFirst({
-        where: { shopId, isActive: true, mobile: dto.mobile.trim() },
-        select: { id: true, name: true },
-      });
-      if (existingMobile) {
-        throw new ConflictException(`یہ موبائل پہلے سے رجسٹر ہے — گاہک: ${existingMobile.name}`);
-      }
-    }
+    const additionalMobiles = sanitizeAdditionalMobiles(dto.additionalMobiles);
+    await this.assertMobilesAvailable(shopId, dto.mobile, additionalMobiles);
 
     if (dto.cnic?.trim()) {
       const existingCnic = await this.prisma.customer.findFirst({
@@ -57,9 +104,11 @@ export class CustomerService {
         fatherOrHusbandName: dto.fatherOrHusbandName,
         caste: dto.caste,
         profession: dto.profession,
-        mobile: dto.mobile,
+        mobile: dto.mobile?.trim() || undefined,
+        additionalMobiles: additionalMobiles.length > 0 ? additionalMobiles : undefined,
         cnic: dto.cnic,
         cnicPhotoUrl: dto.cnicPhotoUrl,
+        photoUrl: dto.photoUrl,
         cnicFrontPhotoUrl: dto.cnicFrontPhotoUrl,
         cnicBackPhotoUrl: dto.cnicBackPhotoUrl,
         chequePhotoUrl: dto.chequePhotoUrl,
@@ -130,15 +179,80 @@ export class CustomerService {
     return customer;
   }
 
+  /** Rules-based hints for نئی فروخت — last lease of this customer */
+  async getSaleHints(user: AuthUser, customerId: string) {
+    const shopId = requireShopId(user);
+    await this.findOne(user, customerId);
+
+    const lastLease = await this.prisma.leaseAccount.findFirst({
+      where: { shopId, customerId },
+      orderBy: [{ accountDate: 'desc' }, { accountNumber: 'desc' }],
+      select: {
+        accountNumber: true,
+        totalAmount: true,
+        advanceAmount: true,
+        installmentCount: true,
+        frequency: true,
+        currentInstallmentAmount: true,
+        salesmanId: true,
+        recoveryManId: true,
+        outdoorManId: true,
+      },
+    });
+
+    if (!lastLease) return null;
+
+    const total = toNum(lastLease.totalAmount);
+    const advance = toNum(lastLease.advanceAmount);
+    const advancePercent = total > 0 ? Math.round((advance / total) * 1000) / 10 : 0;
+
+    return {
+      accountNumber: lastLease.accountNumber,
+      advancePercent,
+      installmentCount: lastLease.installmentCount,
+      frequency: lastLease.frequency,
+      perInstallmentAmount: toNum(lastLease.currentInstallmentAmount),
+      salesmanId: lastLease.salesmanId,
+      recoveryManId: lastLease.recoveryManId,
+      outdoorManId: lastLease.outdoorManId,
+    };
+  }
+
   async update(user: AuthUser, id: string, dto: UpdateCustomerDto) {
     await this.findOne(user, id);
     const shopId = requireShopId(user);
     if (dto.areaId) {
       await this.assertAreaInShop(shopId, dto.areaId);
     }
+
+    const additionalMobiles =
+      dto.additionalMobiles !== undefined
+        ? sanitizeAdditionalMobiles(dto.additionalMobiles)
+        : undefined;
+
+    if (dto.mobile !== undefined || dto.additionalMobiles !== undefined) {
+      await this.assertMobilesAvailable(
+        shopId,
+        dto.mobile,
+        additionalMobiles,
+        id,
+      );
+    }
+
+    const { additionalMobiles: _extraMobiles, mobile: _mobile, ...rest } = dto;
     return this.prisma.customer.update({
       where: { id },
-      data: dto,
+      data: {
+        ...rest,
+        ...(dto.mobile !== undefined ? { mobile: dto.mobile?.trim() || null } : {}),
+        ...(dto.additionalMobiles !== undefined
+          ? {
+              additionalMobiles: additionalMobiles?.length
+                ? additionalMobiles
+                : Prisma.DbNull,
+            }
+          : {}),
+      },
       include: customerInclude,
     });
   }

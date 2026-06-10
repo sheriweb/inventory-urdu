@@ -1,11 +1,12 @@
 import type { NextConfig } from 'next';
 
-const internalApi =
-  process.env.INTERNAL_API_URL ||
-  (process.env.HOSTINGER_COMBINED === '1' ? 'http://127.0.0.1:4001' : '');
+const apiPort = process.env.API_INTERNAL_PORT || '4001';
+// Browser always calls /api/v1 — proxy to Nest in dev and production.
+const internalApi = process.env.INTERNAL_API_URL || `http://127.0.0.1:${apiPort}`;
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@inventory-urdu/shared'],
+  allowedDevOrigins: ['*.trycloudflare.com'],
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },

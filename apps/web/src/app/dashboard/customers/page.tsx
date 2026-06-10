@@ -1,24 +1,24 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { QuickAddSelect } from '@/components/forms/quick-add-select';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { TableRowActions } from '@/components/ui/table-actions';
-import { StepFormModal } from '@/components/ui/step-form-modal';
+import { FormModal } from '@/components/ui/form-modal';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { AlertBanner } from '@/components/ui/alert-banner';
-import { FormField } from '@/components/ui/form-section';
-import { UrduNameInput } from '@/components/forms/urdu-name-input';
-import { ImageUpload } from '@/components/ui/image-upload';
 import { useDebounce } from '@/hooks/use-debounce';
-import type { Area } from '@inventory-urdu/shared';
+import {
+  GuarantorFormFields,
+  emptyGuarantorForm,
+  type GuarantorFormState,
+} from '@/components/forms/guarantor-form-fields';
 
 type Guarantor = {
   id: string;
@@ -53,71 +53,13 @@ type CustomerRow = {
   guarantors?: Guarantor[];
 };
 
-const emptyCustomer = {
-  name: '',
-  fatherOrHusbandName: '',
-  caste: '',
-  profession: '',
-  mobile: '',
-  cnic: '',
-  city: '',
-  areaId: '',
-  presentAddress: '',
-  permanentAddress: '',
-  bankName: '',
-  chequeNumber: '',
-  cnicPhotoUrl: '',
-  cnicFrontPhotoUrl: '',
-  cnicBackPhotoUrl: '',
-  chequePhotoUrl: '',
-};
-
-const emptyGuarantor = {
-  name: '',
-  cnic: '',
-  phone: '',
-  cnicFrontPhotoUrl: '',
-  cnicBackPhotoUrl: '',
-  presentAddress: '',
-  permanentAddress: '',
-};
-
-const textareaClass =
-  'flex min-h-[4.5rem] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
-
-function customerPayload(form: typeof emptyCustomer) {
-  return {
-    name: form.name,
-    areaId: form.areaId || undefined,
-    fatherOrHusbandName: form.fatherOrHusbandName || undefined,
-    caste: form.caste || undefined,
-    profession: form.profession || undefined,
-    mobile: form.mobile || undefined,
-    cnic: form.cnic || undefined,
-    city: form.city || undefined,
-    presentAddress: form.presentAddress || undefined,
-    permanentAddress: form.permanentAddress || undefined,
-    bankName: form.bankName || undefined,
-    chequeNumber: form.chequeNumber || undefined,
-    cnicPhotoUrl: form.cnicPhotoUrl || undefined,
-    cnicFrontPhotoUrl: form.cnicFrontPhotoUrl || undefined,
-    cnicBackPhotoUrl: form.cnicBackPhotoUrl || undefined,
-    chequePhotoUrl: form.chequePhotoUrl || undefined,
-  };
-}
-
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [areas, setAreas] = useState<Area[]>([]);
-  const [form, setForm] = useState(emptyCustomer);
-  const [guarantorForm, setGuarantorForm] = useState(emptyGuarantor);
+  const [guarantorForm, setGuarantorForm] = useState<GuarantorFormState>(emptyGuarantorForm);
   const [guarantors, setGuarantors] = useState<Guarantor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [guarantorSubmitting, setGuarantorSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [addOpen, setAddOpen] = useState(false);
-  const [editRow, setEditRow] = useState<CustomerRow | null>(null);
   const [guarantorCustomer, setGuarantorCustomer] = useState<CustomerRow | null>(null);
   const [guarantorAddOpen, setGuarantorAddOpen] = useState(false);
   const [deleteRow, setDeleteRow] = useState<CustomerRow | null>(null);
@@ -133,13 +75,11 @@ export default function CustomersPage() {
     setLoading(true);
     setError('');
     try {
-      const [customersRes, areasRes] = await Promise.all([
-        api.get('/customers', { params: { page, limit: 10, q: debouncedQ.trim() || undefined } }),
-        api.get('/areas'),
-      ]);
+      const customersRes = await api.get('/customers', {
+        params: { page, limit: 10, q: debouncedQ.trim() || undefined },
+      });
       setCustomers(customersRes.data.data as CustomerRow[]);
       setTotalItems(customersRes.data.meta?.total ?? customersRes.data.data.length);
-      setAreas(areasRes.data.data as Area[]);
     } catch {
       setError('گاہک لوڈ نہیں ہو سکے');
     } finally {
@@ -165,70 +105,10 @@ export default function CustomersPage() {
     }
   }
 
-  function openAdd() {
-    setForm(emptyCustomer);
-    setAddOpen(true);
-  }
-
-  function openEdit(customer: CustomerRow) {
-    setEditRow(customer);
-    setForm({
-      name: customer.name,
-      fatherOrHusbandName: customer.fatherOrHusbandName ?? '',
-      caste: customer.caste ?? '',
-      profession: customer.profession ?? '',
-      mobile: customer.mobile ?? '',
-      cnic: customer.cnic ?? '',
-      city: customer.city ?? '',
-      areaId: customer.areaId ?? customer.area?.id ?? '',
-      presentAddress: customer.presentAddress ?? '',
-      permanentAddress: customer.permanentAddress ?? '',
-      bankName: customer.bankName ?? '',
-      chequeNumber: customer.chequeNumber ?? '',
-      cnicPhotoUrl: customer.cnicPhotoUrl ?? '',
-      cnicFrontPhotoUrl: customer.cnicFrontPhotoUrl ?? customer.cnicPhotoUrl ?? '',
-      cnicBackPhotoUrl: customer.cnicBackPhotoUrl ?? '',
-      chequePhotoUrl: customer.chequePhotoUrl ?? '',
-    });
-  }
-
   async function openGuarantors(customer: CustomerRow) {
     setGuarantorCustomer(customer);
-    setGuarantorForm(emptyGuarantor);
+    setGuarantorForm(emptyGuarantorForm);
     await loadGuarantors(customer.id);
-  }
-
-  async function onAdd() {
-    setSubmitting(true);
-    setError('');
-    try {
-      await api.post('/customers', customerPayload(form));
-      setAddOpen(false);
-      await load();
-      notify.created('گاہک');
-    } catch (err) {
-      setError('گاہک شامل نہیں ہو سکا');
-      notify.fail('گاہک شامل', err);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function onUpdate() {
-    if (!editRow) return;
-    setSubmitting(true);
-    setError('');
-    try {
-      await api.patch(`/customers/${editRow.id}`, customerPayload(form));
-      setEditRow(null);
-      await load();
-      notify.updated('گاہک');
-    } catch (err) {
-      setError('گاہک اپڈیٹ نہیں ہو سکا');
-      notify.fail('گاہک اپڈیٹ', err);
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   async function onDeleteCustomer(id: string) {
@@ -247,6 +127,10 @@ export default function CustomersPage() {
 
   async function onAddGuarantor() {
     if (!guarantorCustomer) return;
+    if (!guarantorForm.name.trim()) {
+      notify.fail('ضمانتی نام درج کریں');
+      return;
+    }
     setGuarantorSubmitting(true);
     setError('');
     try {
@@ -259,7 +143,8 @@ export default function CustomersPage() {
         presentAddress: guarantorForm.presentAddress || undefined,
         permanentAddress: guarantorForm.permanentAddress || undefined,
       });
-      setGuarantorForm(emptyGuarantor);
+      setGuarantorForm(emptyGuarantorForm);
+      setGuarantorAddOpen(false);
       await loadGuarantors(guarantorCustomer.id);
       await load();
       notify.created('ضمانتی');
@@ -288,171 +173,6 @@ export default function CustomersPage() {
     }
   }
 
-  const customerSteps = useMemo(
-    () => [
-      {
-        title: 'ذاتی معلومات',
-        description: 'نام، ذات اور پیشہ',
-        validate: () => form.name.trim().length > 0,
-        content: (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="نام">
-              <UrduNameInput value={form.name} onChange={(name) => setForm({ ...form, name })} required autoFocus />
-            </FormField>
-            <FormField label="والد/شوہر کا نام">
-              <UrduNameInput value={form.fatherOrHusbandName} onChange={(fatherOrHusbandName) => setForm({ ...form, fatherOrHusbandName })} showRomanHelper={false} />
-            </FormField>
-            <FormField label="ذات">
-              <UrduNameInput value={form.caste} onChange={(caste) => setForm({ ...form, caste })} showRomanHelper={false} />
-            </FormField>
-            <FormField label="پیشہ">
-              <UrduNameInput value={form.profession} onChange={(profession) => setForm({ ...form, profession })} showRomanHelper={false} />
-            </FormField>
-          </div>
-        ),
-      },
-      {
-        title: 'رابطہ و شناخت',
-        description: 'موبائل، CNIC، شہر اور علاقہ',
-        content: (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="موبائل">
-              <Input value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} dir="ltr" className="text-left" />
-            </FormField>
-            <FormField label="CNIC">
-              <Input value={form.cnic} onChange={(e) => setForm({ ...form, cnic: e.target.value })} dir="ltr" className="text-left" />
-            </FormField>
-            <FormField label="شہر">
-              <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-            </FormField>
-            <FormField label="علاقہ">
-              <QuickAddSelect
-                entity="area"
-                value={form.areaId}
-                onChange={(id) => setForm({ ...form, areaId: id })}
-                placeholder="— منتخب کریں —"
-                options={areas.map((a) => ({
-                  value: a.id,
-                  label: `${a.name}${a.city ? ` (${a.city})` : ''}`,
-                }))}
-                onOptionAdded={(record) => setAreas((prev) => [...prev, record as Area])}
-              />
-            </FormField>
-          </div>
-        ),
-      },
-      {
-        title: 'پتہ',
-        description: 'موجودہ اور مستقل پتہ',
-        content: (
-          <div className="grid gap-4">
-            <FormField label="موجودہ پتہ">
-              <textarea className={textareaClass} value={form.presentAddress} onChange={(e) => setForm({ ...form, presentAddress: e.target.value })} />
-            </FormField>
-            <FormField label="مستقل پتہ">
-              <textarea className={textareaClass} value={form.permanentAddress} onChange={(e) => setForm({ ...form, permanentAddress: e.target.value })} />
-            </FormField>
-          </div>
-        ),
-      },
-      {
-        title: 'بینک و دستاویز',
-        description: 'بینک، چیک اور CNIC تصاویر',
-        content: (
-          <div className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="بینک">
-                <Input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
-              </FormField>
-              <FormField label="چیک نمبر">
-                <Input value={form.chequeNumber} onChange={(e) => setForm({ ...form, chequeNumber: e.target.value })} dir="ltr" className="text-left" />
-              </FormField>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <ImageUpload
-                label="CNIC سامنے"
-                hint="اختیاری"
-                value={form.cnicFrontPhotoUrl}
-                onChange={(url) => setForm({ ...form, cnicFrontPhotoUrl: url })}
-              />
-              <ImageUpload
-                label="CNIC پیچھے"
-                hint="اختیاری"
-                value={form.cnicBackPhotoUrl}
-                onChange={(url) => setForm({ ...form, cnicBackPhotoUrl: url })}
-              />
-              <ImageUpload
-                label="چیک کی تصویر"
-                hint="اختیاری"
-                value={form.chequePhotoUrl}
-                onChange={(url) => setForm({ ...form, chequePhotoUrl: url })}
-              />
-            </div>
-          </div>
-        ),
-      },
-    ],
-    [form, areas],
-  );
-
-  const guarantorSteps = useMemo(
-    () => [
-      {
-        title: 'ضمانتی کی معلومات',
-        description: 'نام، CNIC اور فون',
-        validate: () => guarantorForm.name.trim().length > 0,
-        content: (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="ضمانتی نام">
-              <UrduNameInput value={guarantorForm.name} onChange={(name) => setGuarantorForm({ ...guarantorForm, name })} required autoFocus />
-            </FormField>
-            <FormField label="CNIC">
-              <Input value={guarantorForm.cnic} onChange={(e) => setGuarantorForm({ ...guarantorForm, cnic: e.target.value })} dir="ltr" className="text-left" />
-            </FormField>
-            <FormField label="فون" className="sm:col-span-2">
-              <Input value={guarantorForm.phone} onChange={(e) => setGuarantorForm({ ...guarantorForm, phone: e.target.value })} dir="ltr" className="text-left" />
-            </FormField>
-          </div>
-        ),
-      },
-      {
-        title: 'پتہ',
-        description: 'موجودہ اور مستقل پتہ',
-        content: (
-          <div className="grid gap-4">
-            <FormField label="موجودہ پتہ">
-              <textarea className={textareaClass} value={guarantorForm.presentAddress} onChange={(e) => setGuarantorForm({ ...guarantorForm, presentAddress: e.target.value })} />
-            </FormField>
-            <FormField label="مستقل پتہ">
-              <textarea className={textareaClass} value={guarantorForm.permanentAddress} onChange={(e) => setGuarantorForm({ ...guarantorForm, permanentAddress: e.target.value })} />
-            </FormField>
-          </div>
-        ),
-      },
-      {
-        title: 'CNIC تصاویر',
-        description: 'سامنے اور پیچھے (اختیاری)',
-        content: (
-          <div className="grid gap-6 sm:grid-cols-2">
-            <ImageUpload
-              label="CNIC سامنے"
-              hint="اختیاری"
-              value={guarantorForm.cnicFrontPhotoUrl}
-              onChange={(url) => setGuarantorForm({ ...guarantorForm, cnicFrontPhotoUrl: url })}
-            />
-            <ImageUpload
-              label="CNIC پیچھے"
-              hint="اختیاری"
-              value={guarantorForm.cnicBackPhotoUrl}
-              onChange={(url) => setGuarantorForm({ ...guarantorForm, cnicBackPhotoUrl: url })}
-            />
-          </div>
-        ),
-      },
-    ],
-    [guarantorForm],
-  );
-
   const customerColumns: DataTableColumn<CustomerRow>[] = useMemo(
     () => [
       { id: 'name', header: 'نام', cell: (c) => <span className="font-semibold font-urdu text-slate-900">{c.name}</span> },
@@ -477,10 +197,10 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       <PageToolbar>
-        <Button onClick={openAdd} className="gap-1.5">
+        <Link href="/dashboard/customers/new" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700">
           <Plus className="h-4 w-4" />
           نیا گاہک
-        </Button>
+        </Link>
       </PageToolbar>
       {error ? <AlertBanner onRetry={load}>{error}</AlertBanner> : null}
 
@@ -499,43 +219,19 @@ export default function CustomersPage() {
         searchPlaceholder="نام، موبائل، CNIC…"
         emptyDescription="پہلا گاہک شامل کریں"
         emptyAction={
-          <Button type="button" onClick={openAdd} className="gap-1.5">
+          <Link href="/dashboard/customers/new" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700">
             <Plus className="h-4 w-4" />
             نیا گاہک
-          </Button>
+          </Link>
         }
         actions={(c) => (
           <TableRowActions
-            onEdit={() => openEdit(c)}
+            editHref={`/dashboard/customers/${c.id}/edit`}
             onExtra={() => openGuarantors(c)}
             extraLabel="ضمانتی"
             onDelete={() => setDeleteRow(c)}
           />
         )}
-      />
-
-      <StepFormModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        title="نیا گاہک"
-        description="مکمل تفصیل مرحلہ وار درج کریں"
-        size="xl"
-        steps={customerSteps}
-        onSubmit={onAdd}
-        submitting={submitting}
-        submitLabel="گاہک شامل کریں"
-        formId="add-customer-form"
-      />
-
-      <StepFormModal
-        open={Boolean(editRow)}
-        onClose={() => setEditRow(null)}
-        title={`گاہک ترمیم — ${editRow?.name ?? ''}`}
-        size="xl"
-        steps={customerSteps}
-        onSubmit={onUpdate}
-        submitting={submitting}
-        formId="edit-customer-form"
       />
 
       <Modal
@@ -548,7 +244,13 @@ export default function CustomersPage() {
         description="اس گاہک کے ضمانتی"
         size="lg"
         footer={
-          <Button type="button" onClick={() => { setGuarantorForm(emptyGuarantor); setGuarantorAddOpen(true); }}>
+          <Button
+            type="button"
+            onClick={() => {
+              setGuarantorForm(emptyGuarantorForm);
+              setGuarantorAddOpen(true);
+            }}
+          >
             <Plus className="ml-1.5 h-4 w-4" />
             نیا ضمانتی
           </Button>
@@ -579,17 +281,19 @@ export default function CustomersPage() {
         }}
       />
 
-      <StepFormModal
+      <FormModal
         open={guarantorAddOpen}
         onClose={() => setGuarantorAddOpen(false)}
         title="نیا ضمانتی"
         description={guarantorCustomer ? `گاہک: ${guarantorCustomer.name}` : undefined}
-        steps={guarantorSteps}
+        size="lg"
         onSubmit={onAddGuarantor}
         submitting={guarantorSubmitting}
         submitLabel="ضمانتی شامل کریں"
         formId="add-guarantor-form"
-      />
+      >
+        <GuarantorFormFields form={guarantorForm} onChange={setGuarantorForm} autoFocusName />
+      </FormModal>
 
       <ConfirmDialog
         open={Boolean(deleteRow)}

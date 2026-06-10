@@ -64,19 +64,20 @@ export class AuthService {
     const valid = await comparePassword(refreshToken, user.refreshToken);
     if (!valid) throw new UnauthorizedException(MESSAGES.TOKEN_INVALID);
 
-    const tokens = await this.generateTokens({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      shopId: user.shopId,
-    });
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        shopId: user.shopId,
+      },
+      {
+        secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION', '365d'),
+      },
+    );
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: await hashPassword(tokens.refreshToken) },
-    });
-
-    return tokens;
+    return { accessToken, refreshToken };
   }
 
   async logout(userId: string): Promise<void> {
@@ -122,11 +123,11 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION', '15m'),
+        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION', '365d'),
       }),
       this.jwtService.signAsync(payload, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '7d'),
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION', '3650d'),
       }),
     ]);
     return { accessToken, refreshToken };

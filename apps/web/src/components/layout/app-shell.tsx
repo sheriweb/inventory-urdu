@@ -1,14 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Boxes, LogOut, Menu, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TopNavMenu, navGroupsForRole, pageTitleFromNav } from '@/components/layout/top-nav-menu';
+import { TopNavMenu, navGroupsForRole } from '@/components/layout/top-nav-menu';
+import { NavHistoryProvider } from '@/components/layout/nav-history-context';
+import { PageHistoryTabs } from '@/components/layout/page-history-tabs';
 import { MobileNavDrawer } from '@/components/layout/mobile-nav-drawer';
 import { OfflineBanner } from '@/components/layout/offline-banner';
-import { fetchMe, getAuthCacheState, logout } from '@/lib/auth';
+import { PwaRegister } from '@/components/pwa/pwa-register';
+import { OfflineSyncBanner } from '@/components/pwa/offline-sync-banner';
+import { fetchMe, getAuthCacheState, logout, scheduleSessionKeepAlive } from '@/lib/auth';
+import { hasStoredSession } from '@/lib/api';
 import { applyShopBranding } from '@/lib/shop-branding';
 import { resolveImageUrl } from '@/lib/image-url';
 import { isSuperAdmin, isAdminRoute, resolveRouteForUser, ADMIN_ROUTE_PREFIX } from '@/lib/roles';
@@ -23,12 +28,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [authPending, setAuthPending] = useState(() => cached === undefined);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  useEffect(() => scheduleSessionKeepAlive(), []);
+
   useEffect(() => {
     let active = true;
     fetchMe().then((u) => {
       if (!active) return;
       if (!u) {
-        router.replace('/login');
+        if (!hasStoredSession()) {
+          router.replace('/login');
+        } else {
+          setAuthPending(false);
+        }
         return;
       }
       setUser(u);
@@ -60,7 +71,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     () => (user ? navGroupsForRole(user.role) : []),
     [user],
   );
-  const pageTitle = pageTitleFromNav(pathname, navGroups);
   const initials = user?.name?.trim().charAt(0) || '?';
   const superAdmin = isSuperAdmin(user);
   const shopName = superAdmin ? 'سپر ایڈمن' : user?.shop?.name || 'انوینٹری اردو';
@@ -155,21 +165,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {superAdmin && isAdminRoute(pathname) ? <AdminSubnav /> : null}
 
-      {pathname !== '/dashboard' && !(superAdmin && pathname === ADMIN_ROUTE_PREFIX) ? (
-        <div className="no-print relative z-30 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-sm">
-          <div className="mx-auto flex h-14 max-w-[90rem] items-center px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--shop-brand)' }} />
-              <h2 className="text-lg font-bold tracking-tight text-slate-800">{pageTitle}</h2>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <main className="relative z-10 mx-auto w-full max-w-[90rem] flex-1 p-4 sm:p-6 lg:p-8 pb-12">{children}</main>
+      <Suspense fallback={null}>
+        <NavHistoryProvider navGroups={navGroups}>
+          <PageHistoryTabs />
+          <main className="relative z-10 mx-auto w-full max-w-[90rem] flex-1 p-4 sm:p-6 lg:p-8 pb-12">
+            {children}
+          </main>
+        </NavHistoryProvider>
+      </Suspense>
 
       <MobileNavDrawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} groups={navGroups} />
       <OfflineBanner />
+      <OfflineSyncBanner />
+      <PwaRegister />
     </div>
   );
 }
