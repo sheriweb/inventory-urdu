@@ -11,8 +11,6 @@
 name: Deploy to cPanel (Webhook)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

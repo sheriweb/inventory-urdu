@@ -43,9 +43,7 @@ jobs:
         env:
           NPM_CONFIG_PRODUCTION: 'false'
         run: |
-          set -a
-          source deploy/leasing-store-production.env
-          set +a
+          export $(grep -v '^#' deploy/leasing-store-production.env | grep -v '^$' | xargs)
           export HOSTINGER_COMBINED=1
           export INTERNAL_API_URL=http://127.0.0.1:4001
           npm ci --no-audit --no-fund
