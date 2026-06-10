@@ -1,0 +1,39 @@
+# Auto-deploy to HosterPK cPanel on every push to main.
+#
+# Setup (one time):
+# 1. cPanel → Git Version Control → inventory-urdu → Manage
+# 2. Pull or Deploy → set Deploy Path: /home/leasings/inventory-urdu
+# 3. Copy the "Pull or Deploy" webhook URL from that screen
+# 4. GitHub → repo Settings → Secrets → Actions → CPANEL_DEPLOY_WEBHOOK_URL
+#
+# On push: this workflow POSTs to cPanel → pull + deploy + .cpanel.yml tasks.
+
+name: Deploy to cPanel (Webhook)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cpanel-webhook
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger cPanel pull & deploy
+        env:
+          WEBHOOK_URL: ${{ secrets.CPANEL_DEPLOY_WEBHOOK_URL }}
+        run: |
+          if [ -z "${WEBHOOK_URL}" ]; then
+            echo "⚠️ CPANEL_DEPLOY_WEBHOOK_URL secret not set — skipping auto-deploy."
+            echo "Add webhook URL from cPanel → Git → Manage → Pull or Deploy"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"ref":"refs/heads/main"}' \
+            "${WEBHOOK_URL}"
+          echo "✅ cPanel deploy webhook triggered"
