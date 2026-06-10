@@ -1,10 +1,5 @@
-# leasing-store.com — git push → build → FTP deploy (fast bundle, no node_modules).
-#
-# GitHub → Settings → Secrets → Actions — sirf yeh 2 secrets:
-#   LEASING_FTP_PASSWORD     = deploy@leasing-store.com ka password
-#   LEASING_PRODUCTION_ENV   = poori leasing-store-production.env file (multiline)
-#
-# Pehli dafa server par: cPanel → Node.js → Run NPM Install → cpanel-install.mjs → RESTART
+# leasing-store.com — git push → build → FTP deploy.
+# Secrets (already set): LEASING_FTP_PASSWORD, LEASING_PRODUCTION_ENV
 
 name: Deploy leasing-store.com
 
@@ -22,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
@@ -49,10 +46,26 @@ jobs:
           npm ci --no-audit --no-fund
           npm run hostinger:build
 
-      - name: Prepare fast deploy bundle
-        run: bash scripts/prepare-fast-deploy.sh
+      - name: Prepare deploy bundles
+        run: |
+          bash scripts/prepare-fast-deploy.sh
+          bash scripts/prepare-flat-node-modules.sh
 
-      - name: FTP upload app + node_modules
+      - name: Detect dependency changes
+        id: deps
+        run: |
+          # Symlink-safe flat upload needed after package*.json changes or manual full deploy.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "upload_nm=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^ HEAD | grep -qE '^(package(-lock)?\.json|apps/.+/package\.json|packages/.+/package\.json)$'; then
+            echo "upload_nm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload_nm=false" >> "$GITHUB_OUTPUT"
+          fi
+          # One-time: re-upload flat nm after symlink FTP fix (remove next line after site is live).
+          echo "upload_nm=true" >> "$GITHUB_OUTPUT"
+
+      - name: FTP upload app files
         env:
           FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
         run: |
@@ -60,7 +73,27 @@ jobs:
             echo "❌ Missing secret: LEASING_FTP_PASSWORD"
             exit 1
           fi
-          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp rsync
+          WS="$GITHUB_WORKSPACE"
+          lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<EOF
+          set ftp:ssl-allow true
+          set ssl:verify-certificate no
+          set net:timeout 90
+          set net:max-retries 5
+          set mirror:parallel-transfer-count 8
+          cd inventory-urdu
+          rm -f .maintenance
+          lcd ${WS}/deploy-fast
+          mirror -R --parallel=8 .
+          bye
+          EOF
+          echo "✅ App files uploaded"
+
+      - name: FTP upload flat node_modules
+        if: steps.deps.outputs.upload_nm == 'true'
+        env:
+          FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
+        run: |
           WS="$GITHUB_WORKSPACE"
           lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<EOF
           set ftp:ssl-allow true
@@ -68,13 +101,12 @@ jobs:
           set net:timeout 120
           set net:max-retries 5
           set mirror:parallel-transfer-count 8
-          cd inventory-urdu
-          rm -f .maintenance
-          lcd ${WS}/deploy-fast
+          cd nodevenv/inventory-urdu/20/lib/node_modules
+          lcd ${WS}/deploy-flat/node_modules
           mirror -R --parallel=8 .
-          cd ../../nodevenv/inventory-urdu/20/lib/node_modules
-          lcd ${WS}/node_modules
-          mirror -R --parallel=8 --only-newer .
           bye
           EOF
-          echo "✅ App + node_modules deployed (Linux binaries from GitHub runner)"
+          echo "✅ Flat node_modules uploaded (no symlinks)"
+
+      - name: Done
+        run: echo "✅ Deploy complete — site should update within 1 minute"
