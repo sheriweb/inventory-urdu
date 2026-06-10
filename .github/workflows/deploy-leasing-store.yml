@@ -52,7 +52,7 @@ jobs:
       - name: Prepare fast deploy bundle
         run: bash scripts/prepare-fast-deploy.sh
 
-      - name: FTP upload to server
+      - name: FTP upload app + node_modules
         env:
           FTP_PASS: ${{ secrets.LEASING_FTP_PASSWORD }}
         run: |
@@ -61,16 +61,20 @@ jobs:
             exit 1
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq lftp
-          lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<'EOF'
+          WS="$GITHUB_WORKSPACE"
+          lftp -u "deploy@leasing-store.com","${FTP_PASS}" "ftp://leasing-store.com:21" <<EOF
           set ftp:ssl-allow true
           set ssl:verify-certificate no
-          set net:timeout 90
-          set net:max-retries 3
-          set mirror:parallel-transfer-count 6
+          set net:timeout 120
+          set net:max-retries 5
+          set mirror:parallel-transfer-count 8
           cd inventory-urdu
           rm -f .maintenance
-          lcd deploy-fast
-          mirror -R --parallel=6 .
+          lcd ${WS}/deploy-fast
+          mirror -R --parallel=8 .
+          cd ../../nodevenv/inventory-urdu/20/lib/node_modules
+          lcd ${WS}/node_modules
+          mirror -R --parallel=8 --only-newer .
           bye
           EOF
-          echo "✅ FTP deploy done — cPanel Node.js app RESTART karein (ya 1 min wait)"
+          echo "✅ App + node_modules deployed (Linux binaries from GitHub runner)"
