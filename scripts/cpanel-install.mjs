@@ -3,7 +3,7 @@
  * Installs all workspace dependencies (CloudLinux "Run NPM Install" often skips workspaces).
  */
 import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,8 +21,6 @@ function run(cmd) {
     },
   });
 }
-
-import { copyFileSync, existsSync } from 'node:fs';
 
 console.log('=== cPanel full dependency install ===');
 
