@@ -1,11 +1,9 @@
-# Auto-deploy: git push main → build on GitHub → rsync to Hostinger → restart.
-# Server par build NAHI hota (resource limits avoid).
+# DISABLED on push — hPanel Git auto-deploy is primary (resource limits on shared hosting).
+# Run manually from GitHub Actions tab only when needed.
 
 name: Hostinger Deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
