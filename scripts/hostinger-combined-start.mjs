@@ -1,8 +1,9 @@
 /**
- * Hostinger Node.js app: API internally + Next.js on $PORT.
- * Next.js rewrites proxy /api/v1/* to the internal API.
+ * Hostinger / LiteSpeed Passenger: Next HTTP server in THIS process + API as detached child.
  */
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { parse } from 'node:url';
 import {
   appendFileSync,
   chmodSync,
@@ -10,6 +11,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  writeFileSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -40,15 +42,15 @@ function logLine(logPath, message) {
   console.log(message);
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function resolveTool(...candidates) {
   for (const candidate of candidates) {
     if (candidate && existsSync(candidate)) return candidate;
   }
   return null;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
 function fixPrismaEnginePermissions(modulesDir) {
@@ -64,25 +66,6 @@ function fixPrismaEnginePermissions(modulesDir) {
   }
 }
 
-async function waitForPort(port, host = '127.0.0.1', attempts = 30, delayMs = 1000) {
-  for (let i = 0; i < attempts; i += 1) {
-    const ok = await new Promise((resolve) => {
-      const socket = net.createConnection({ port: Number(port), host }, () => {
-        socket.end();
-        resolve(true);
-      });
-      socket.on('error', () => resolve(false));
-      socket.setTimeout(2000, () => {
-        socket.destroy();
-        resolve(false);
-      });
-    });
-    if (ok) return true;
-    await sleep(delayMs);
-  }
-  return false;
-}
-
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = path.join(root, 'apps/api');
 const webDir = path.join(root, 'apps/web');
@@ -92,9 +75,41 @@ const maintenanceFlag = path.join(root, '.maintenance');
 const node = process.execPath;
 const modulesDir = path.join(root, 'node_modules');
 
+function writeEnvFile(filePath, env) {
+  const lines = Object.entries(env)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${key}=${shellQuote(value)}`);
+  writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+function startApiDetached(apiMain, apiEnv, apiLogPath) {
+  const envFile = path.join(tmpDir, 'api.env');
+  const engineLib = path.join(
+    modulesDir,
+    '@prisma/engines/libquery_engine-debian-openssl-1.1.x.so.node',
+  );
+  if (existsSync(engineLib)) {
+    apiEnv.PRISMA_QUERY_ENGINE_LIBRARY = engineLib;
+  }
+  writeEnvFile(envFile, apiEnv);
+  const cmd = [
+    `pkill -f ${shellQuote(path.join('apps/api/dist/main.js'))} 2>/dev/null || true`,
+    `sleep 1`,
+    `set -a && . ${shellQuote(envFile)} && set +a`,
+    `cd ${shellQuote(root)}`,
+    `nohup ${shellQuote(node)} ${shellQuote(path.join('apps/api/dist/main.js'))} >> ${shellQuote(apiLogPath)} 2>&1 &`,
+  ].join(' && ');
+  spawn('/bin/sh', ['-c', cmd], {
+    env: { PATH: process.env.PATH || '/usr/bin:/bin' },
+    detached: true,
+    stdio: 'ignore',
+  }).unref();
+}
+
 function loadProductionEnv() {
   const files = [
     path.join(root, 'hostinger-production.env'),
+    path.join(root, 'deploy/hostinger-production.env'),
     path.join(root, '.env'),
     path.join(apiDir, '.env'),
   ];
@@ -120,16 +135,12 @@ const prismaCli = resolveTool(
   path.join(modulesDir, 'prisma/build/index.js'),
   path.join(apiDir, 'node_modules/prisma/build/index.js'),
 );
-const nextCli = resolveTool(
-  path.join(modulesDir, 'next/dist/bin/next'),
-  path.join(webDir, 'node_modules/next/dist/bin/next'),
-);
 const tsNodeCli = resolveTool(
   path.join(modulesDir, 'ts-node/dist/bin.js'),
   path.join(apiDir, 'node_modules/ts-node/dist/bin.js'),
 );
 const apiPort = process.env.API_INTERNAL_PORT || '4001';
-const webPort = process.env.PORT || '3000';
+const webPort = process.env.PORT || process.env.PASSENGER_PORT || '3000';
 
 logLine(logPath, `[hostinger] Boot (pid ${process.pid}) cwd=${process.cwd()}`);
 
@@ -149,11 +160,13 @@ if (existsSync(maintenanceFlag)) {
     .join(path.delimiter);
 
   const apiEnv = {
-    ...process.env,
+    PATH: process.env.PATH || '/usr/bin:/bin',
+    HOME: process.env.HOME,
+    LANG: process.env.LANG || 'en_US.UTF-8',
     ...fileEnv,
     PORT: apiPort,
     API_PORT: apiPort,
-    NODE_ENV: process.env.NODE_ENV || 'production',
+    NODE_ENV: 'production',
     NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=256',
     NODE_PATH: nodePath,
   };
@@ -164,7 +177,7 @@ if (existsSync(maintenanceFlag)) {
     PORT: webPort,
     HOSTINGER_COMBINED: '1',
     INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
-    NODE_ENV: process.env.NODE_ENV || 'production',
+    NODE_ENV: 'production',
     NODE_OPTIONS: process.env.WEB_NODE_OPTIONS || '--max-old-space-size=384',
     NODE_PATH: nodePath,
   };
@@ -177,74 +190,47 @@ if (existsSync(maintenanceFlag)) {
     });
   }
 
-  if (process.env.RUN_DB_SETUP === '1') {
-    if (!prismaCli) {
-      logLine(logPath, '[hostinger] RUN_DB_SETUP skipped — prisma CLI not found.');
-    } else {
-      try {
-        logLine(logPath, '[hostinger] RUN_DB_SETUP=1 — pushing schema…');
-        await runOnce(node, [prismaCli, 'db', 'push', '--skip-generate'], apiDir, apiEnv);
-        if (process.env.FORCE_DB_SETUP === '1' && tsNodeCli) {
-          await runOnce(
-            node,
-            [tsNodeCli, '-r', 'tsconfig-paths/register', 'prisma/seed.ts'],
-            apiDir,
-            apiEnv,
-          );
-        }
-        logLine(logPath, '[hostinger] DB setup complete.');
-      } catch (err) {
-        logLine(logPath, `[hostinger] DB setup failed (app will still start): ${err}`);
+  if (process.env.RUN_DB_SETUP === '1' && prismaCli) {
+    try {
+      logLine(logPath, '[hostinger] RUN_DB_SETUP=1 — pushing schema…');
+      await runOnce(node, [prismaCli, 'db', 'push', '--skip-generate'], apiDir, apiEnv);
+      if (process.env.FORCE_DB_SETUP === '1' && tsNodeCli) {
+        await runOnce(
+          node,
+          [tsNodeCli, '-r', 'tsconfig-paths/register', 'prisma/seed.ts'],
+          apiDir,
+          apiEnv,
+        );
       }
+      logLine(logPath, '[hostinger] DB setup complete.');
+    } catch (err) {
+      logLine(logPath, `[hostinger] DB setup failed (app will still start): ${err}`);
     }
   }
 
-  if (!nextCli) {
-    logLine(logPath, '[hostinger] FATAL: next CLI missing — run npm install on server.');
-    process.exit(1);
-  }
+  logLine(
+    logPath,
+    `[hostinger] Starting API via nohup on 127.0.0.1:${apiPort} (DATABASE_URL=${process.env.DATABASE_URL ? 'set' : 'MISSING'})…`,
+  );
+  const apiMain = path.join(apiDir, 'dist/main.js');
+  const apiLogPath = path.join(tmpDir, 'api.log');
+  startApiDetached(apiMain, apiEnv, apiLogPath);
 
-  const children = [];
+  Object.assign(process.env, webEnv);
+  logLine(logPath, `[hostinger] Preparing Next.js (Passenger main process) on port ${webPort}…`);
 
-  function spawnLogged(name, cmd, args, cwd, env) {
-    logLine(logPath, `[hostinger] spawn ${name}: ${cmd} ${args.join(' ')}`);
-    const child = spawn(cmd, args, {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false,
-    });
-    child.stdout?.on('data', (chunk) => {
-      for (const line of chunk.toString().split('\n').filter(Boolean)) {
-        logLine(logPath, `[${name}] ${line}`);
-      }
-    });
-    child.stderr?.on('data', (chunk) => {
-      for (const line of chunk.toString().split('\n').filter(Boolean)) {
-        logLine(logPath, `[${name}:err] ${line}`);
-      }
-    });
-    child.on('exit', (code, signal) => {
-      logLine(logPath, `[hostinger] ${name} exited code=${code} signal=${signal ?? ''}`);
-    });
-    children.push(child);
-    return child;
-  }
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const next = require('next');
+  const nextApp = next({ dev: false, dir: webDir });
+  await nextApp.prepare();
+  const handle = nextApp.getRequestHandler();
 
-  spawnLogged('api', node, [path.join(apiDir, 'dist/main.js')], apiDir, apiEnv);
-
-  // Start Next immediately — Hostinger expects PORT to open quickly.
-  logLine(logPath, `[hostinger] Starting Next.js on port ${webPort}…`);
-  const nextProc = spawn(node, [nextCli, 'start', '-p', webPort], {
-    cwd: webDir,
-    env: webEnv,
-    stdio: 'inherit',
-    shell: false,
+  const server = createServer((req, res) => {
+    handle(req, res, parse(req.url, true));
   });
-  await new Promise((resolve, reject) => {
-    nextProc.on('error', reject);
-    nextProc.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`next exit ${code}`)),
-    );
+
+  server.listen(Number(webPort), '0.0.0.0', () => {
+    logLine(logPath, `[hostinger] Listening on http://0.0.0.0:${webPort}`);
   });
 }

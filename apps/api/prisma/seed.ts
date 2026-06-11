@@ -33,7 +33,36 @@ const DEMO_SHOPS = [
   },
 ] as const;
 
-async function upsertDemoShop(spec: (typeof DEMO_SHOPS)[number]) {
+const PRODUCTION_SHOPS = [
+  {
+    email: 'yasir@qistpro.shop',
+    password: 'Yasir@2026!',
+    ownerName: 'Yasir',
+    shopName: 'Yasir Shop',
+  },
+  {
+    email: 'ahad@qistpro.shop',
+    password: 'Ahad@2026!',
+    ownerName: 'Ahad',
+    shopName: 'Ahad Shop',
+  },
+] as const;
+
+type ShopSeedSpec = {
+  email: string;
+  password: string;
+  ownerName: string;
+  shopName: string;
+  phone?: string;
+  mobile?: string;
+  city?: string;
+  address?: string;
+  billingPlanLabel?: string;
+  monthlyFeePkr?: number;
+  demoOptions?: (typeof DEMO_SHOPS)[number]['demoOptions'];
+};
+
+async function upsertShop(spec: ShopSeedSpec) {
   const hash = await bcrypt.hash(spec.password, 12);
 
   const owner = await prisma.user.upsert({
@@ -117,16 +146,23 @@ async function main() {
 
   console.log(`Super admin ready: ${email}`);
 
+  for (const spec of PRODUCTION_SHOPS) {
+    await upsertShop(spec);
+    console.log(`Shop ready: ${spec.shopName} (${spec.email} / ${spec.password})`);
+  }
+
   const forceDemo = process.env.FORCE_DEMO_SEED === '1';
 
   for (const spec of DEMO_SHOPS) {
-    const { shop, owner } = await upsertDemoShop(spec);
+    const { shop, owner } = await upsertShop(spec);
     console.log(`Demo shop ready: ${spec.shopName} (${spec.email} / ${spec.password})`);
-    await seedDemoData(prisma, shop.id, owner.id, forceDemo, spec.demoOptions);
+    if (spec.demoOptions) {
+      await seedDemoData(prisma, shop.id, owner.id, forceDemo, spec.demoOptions);
+    }
   }
 
   console.log('\n--- Login credentials ---');
-  for (const spec of DEMO_SHOPS) {
+  for (const spec of PRODUCTION_SHOPS) {
     console.log(`${spec.shopName}: ${spec.email} / ${spec.password}`);
   }
 }
