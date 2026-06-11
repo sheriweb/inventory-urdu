@@ -74,12 +74,24 @@ const tmpDir = path.join(root, 'tmp');
 const logPath = path.join(tmpDir, 'hostinger.log');
 const maintenanceFlag = path.join(root, '.maintenance');
 const node = process.execPath;
+const apiNode =
+  process.env.API_NODE_BIN ||
+  (existsSync('/opt/alt/alt-nodejs18/root/bin/node')
+    ? '/opt/alt/alt-nodejs18/root/bin/node'
+    : node);
 const modulesDir = path.join(root, 'node_modules');
+
+function normalizeEnvValue(key, value) {
+  if (key === 'DATABASE_URL' && typeof value === 'string') {
+    return value.replace(/\\%40/g, '%40');
+  }
+  return value;
+}
 
 function writeEnvFile(filePath, env) {
   const lines = Object.entries(env)
     .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => `${key}=${shellQuote(value)}`);
+    .map(([key, value]) => `${key}=${shellQuote(normalizeEnvValue(key, value))}`);
   writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
 }
 
@@ -99,18 +111,11 @@ function isPortOpen(port, host = '127.0.0.1') {
 
 function startApiDetached(apiEnv, apiLogPath) {
   const envFile = path.join(tmpDir, 'api.env');
-  const engineLib = path.join(
-    modulesDir,
-    '@prisma/engines/libquery_engine-debian-openssl-1.1.x.so.node',
-  );
-  if (existsSync(engineLib)) {
-    apiEnv.PRISMA_QUERY_ENGINE_LIBRARY = engineLib;
-  }
   writeEnvFile(envFile, apiEnv);
   const cmd = [
     `set -a && . ${shellQuote(envFile)} && set +a`,
     `cd ${shellQuote(root)}`,
-    `nohup ${shellQuote(node)} ${shellQuote(path.join('apps/api/dist/main.js'))} >> ${shellQuote(apiLogPath)} 2>&1 &`,
+    `nohup ${shellQuote(apiNode)} ${shellQuote(path.join('apps/api/dist/main.js'))} >> ${shellQuote(apiLogPath)} 2>&1 &`,
   ].join(' && ');
   spawn('/bin/sh', ['-c', cmd], {
     env: { PATH: process.env.PATH || '/usr/bin:/bin' },
@@ -177,7 +182,10 @@ if (existsSync(maintenanceFlag)) {
     HOME: process.env.HOME,
     LANG: process.env.LANG || 'en_US.UTF-8',
     ...fileEnv,
-    DATABASE_URL: fileEnv.DATABASE_URL || process.env.DATABASE_URL,
+    DATABASE_URL: normalizeEnvValue(
+      'DATABASE_URL',
+      fileEnv.DATABASE_URL || process.env.DATABASE_URL,
+    ),
     JWT_ACCESS_SECRET: fileEnv.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: fileEnv.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET,
     PORT: apiPort,
@@ -230,7 +238,7 @@ if (existsSync(maintenanceFlag)) {
   } else {
     logLine(
       logPath,
-      `[hostinger] Starting API via nohup on 127.0.0.1:${apiPort} (DATABASE_URL=${apiEnv.DATABASE_URL ? 'set' : 'MISSING'})…`,
+      `[hostinger] Starting API via nohup (${apiNode}) on 127.0.0.1:${apiPort} (DATABASE_URL=${apiEnv.DATABASE_URL ? 'set' : 'MISSING'})…`,
     );
     startApiDetached(apiEnv, apiLogPath);
   }
