@@ -575,7 +575,7 @@ export function CustomerFormPage({
               <div>
                 <CardTitle className="text-sm text-slate-900">بابت خریداری / آئٹم</CardTitle>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  نام، ریٹ، مقدار — موبائل IMEI 1/2 · بائیک فریم، انجن، چیسیس
+                  نام، ریٹ، مقدار — موبائل IMEI 1/2 · موٹر سائیکل رجسٹریشن، ماڈل، ہارس پاور، میکر، چیسز، انجن
                 </p>
               </div>
             </CardHeader>

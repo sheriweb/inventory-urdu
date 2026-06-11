@@ -46,6 +46,17 @@ function ensureMobileImeiFields(fields: ItemIdentifierField[]): ItemIdentifierFi
   return [...ordered, ...extra];
 }
 
+function ensureBikeDetailFields(fields: ItemIdentifierField[]): ItemIdentifierField[] {
+  const defaults = fieldsForSaleType('bike');
+  const byKey = new Map(defaults.map((field) => [field.key, { ...field }]));
+  for (const field of fields) {
+    byKey.set(field.key, field);
+  }
+  const ordered = defaults.map((field) => byKey.get(field.key)!).filter(Boolean);
+  const extra = fields.filter((field) => !defaults.some((entry) => entry.key === field.key));
+  return [...ordered, ...extra];
+}
+
 export function identifierFieldsForLine(
   line: Pick<SaleItemLine, 'saleType' | 'catalogItemId'>,
   catalog: CatalogItem[] = [],
@@ -68,6 +79,10 @@ export function identifierFieldsForLine(
 
   if (line.saleType === 'mobile') {
     return ensureMobileImeiFields(fields);
+  }
+
+  if (line.saleType === 'bike') {
+    return ensureBikeDetailFields(fields);
   }
 
   return fields;

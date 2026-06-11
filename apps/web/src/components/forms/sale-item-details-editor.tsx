@@ -94,7 +94,7 @@ export function SaleItemDetailsEditor({
           <p className="mt-0.5 text-xs text-slate-500">
             {saleType === 'mobile'
               ? 'موبائل — IMEI 1 اور IMEI 2 درج کریں'
-              : 'موٹر سائیکل — فریم، انجن اور چیسیس نمبر'}
+              : 'موٹر سائیکل — رجسٹریشن، ماڈل، ہارس پاور، میکر، چیسز اور انجن نمبر'}
           </p>
         </div>
       ) : null}
@@ -148,7 +148,14 @@ function ReceiptFieldGrid({
               voiceMode="number"
               voiceTitle={`${field.label} بولیں`}
               scanTitle={`${field.label} اسکین`}
-              showScan={field.key.includes('imei') || field.key.includes('serial') || field.key.includes('frame') || field.key.includes('engine') || field.key.includes('chassis')}
+              showScan={
+                field.key.includes('imei') ||
+                field.key.includes('serial') ||
+                field.key.includes('registration') ||
+                field.key.includes('engine') ||
+                field.key.includes('chassis') ||
+                field.key.includes('frame')
+              }
               compact={compact}
               dir="ltr"
               className={cn(

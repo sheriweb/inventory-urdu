@@ -53,9 +53,12 @@ export const ITEM_IDENTIFIER_PRESETS: Record<
   bike: {
     label: 'موٹر سائیکل / بائیک',
     fields: [
-      { key: 'frame_no', label: 'فریم نمبر', required: true },
+      { key: 'registration_no', label: 'رجسٹریشن نمبر', required: true },
+      { key: 'model', label: 'ماڈل', required: false },
+      { key: 'horse_power', label: 'ہارس پاور', required: false },
+      { key: 'maker', label: 'میکر', required: false },
+      { key: 'chassis_no', label: 'چیسز نمبر', required: true },
       { key: 'engine_no', label: 'انجن نمبر', required: true },
-      { key: 'chassis_no', label: 'چیسیس نمبر', required: true },
     ],
   },
   electronics: {
@@ -84,7 +87,9 @@ export function saleTypeFromIdentifierFields(
     keys.has('engine_no') ||
     keys.has('chassis_no') ||
     keys.has('registration_no') ||
-    keys.has('maker')
+    keys.has('horse_power') ||
+    keys.has('maker') ||
+    (keys.has('model') && !keys.has('imei_1'))
   ) {
     return 'bike';
   }
