@@ -2,21 +2,18 @@
  * Hostinger Node.js app: API internally + Next.js on $PORT.
  * Next.js rewrites proxy /api/v1/* to the internal API.
  */
-import { spawn, execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import net from 'node:net';
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
+  readdirSync,
 } from 'node:fs';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-
-const require = createRequire(import.meta.url);
 
 function loadDotEnv(filePath) {
   try {
@@ -41,10 +38,50 @@ function logLine(logPath, message) {
   } catch {
     console.error(message);
   }
+  console.log(message);
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveTool(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function fixPrismaEnginePermissions(modulesDir) {
+  const enginesDir = path.join(modulesDir, '@prisma/engines');
+  if (!existsSync(enginesDir)) return;
+  for (const name of readdirSync(enginesDir)) {
+    if (!name.startsWith('schema-engine') && !name.startsWith('libquery_engine')) continue;
+    try {
+      chmodSync(path.join(enginesDir, name), 0o755);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function waitForPort(port, host = '127.0.0.1', attempts = 30, delayMs = 1000) {
+  for (let i = 0; i < attempts; i += 1) {
+    const ok = await new Promise((resolve) => {
+      const socket = net.createConnection({ port: Number(port), host }, () => {
+        socket.end();
+        resolve(true);
+      });
+      socket.on('error', () => resolve(false));
+      socket.setTimeout(2000, () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+    if (ok) return true;
+    await sleep(delayMs);
+  }
+  return false;
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,15 +112,9 @@ function loadProductionEnv() {
 }
 
 loadProductionEnv();
-
 mkdirSync(tmpDir, { recursive: true });
-
-function resolveTool(...candidates) {
-  for (const candidate of candidates) {
-    if (candidate && existsSync(candidate)) return candidate;
-  }
-  return null;
-}
+fixPrismaEnginePermissions(modulesDir);
+fixPrismaEnginePermissions(path.join(apiDir, 'node_modules'));
 
 const prismaCli = resolveTool(
   path.join(modulesDir, 'prisma/build/index.js'),
@@ -100,11 +131,10 @@ const tsNodeCli = resolveTool(
 const apiPort = process.env.API_INTERNAL_PORT || '4001';
 const webPort = process.env.PORT || '3000';
 
-logLine(logPath, `[hostinger] Boot (pid ${process.pid})`);
+logLine(logPath, `[hostinger] Boot (pid ${process.pid}) cwd=${process.cwd()}`);
 
 if (existsSync(maintenanceFlag)) {
   logLine(logPath, '[hostinger] MAINTENANCE MODE (.maintenance file) — app paused.');
-  console.log('Maintenance mode: delete .maintenance on server then restart app.');
   setInterval(() => {}, 60_000);
 } else if (!existsSync(path.join(apiDir, 'dist/main.js'))) {
   logLine(logPath, '[hostinger] FATAL: apps/api/dist/main.js missing — run npm run hostinger:build');
@@ -124,17 +154,19 @@ if (existsSync(maintenanceFlag)) {
     PORT: apiPort,
     API_PORT: apiPort,
     NODE_ENV: process.env.NODE_ENV || 'production',
-    NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=384',
+    NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=256',
     NODE_PATH: nodePath,
   };
 
   const webEnv = {
     ...process.env,
+    ...fileEnv,
     PORT: webPort,
     HOSTINGER_COMBINED: '1',
     INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
     NODE_ENV: process.env.NODE_ENV || 'production',
-    NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=512',
+    NODE_OPTIONS: process.env.WEB_NODE_OPTIONS || '--max-old-space-size=384',
+    NODE_PATH: nodePath,
   };
 
   function runOnce(cmd, args, cwd, env) {
@@ -168,19 +200,60 @@ if (existsSync(maintenanceFlag)) {
   }
 
   if (!nextCli) {
-    logLine(logPath, '[hostinger] FATAL: next CLI missing — run npm ci on server.');
+    logLine(logPath, '[hostinger] FATAL: next CLI missing — run npm install on server.');
     process.exit(1);
   }
 
-  logLine(logPath, `[hostinger] Starting API in-process on 127.0.0.1:${apiPort}…`);
-  Object.assign(process.env, apiEnv);
-  process.chdir(apiDir);
-  require(path.join(apiDir, 'dist/main.js'));
-  await sleep(5000);
+  const children = [];
 
-  logLine(logPath, `[hostinger] Starting Next.js on port ${webPort}…`);
-  process.chdir(webDir);
-  Object.assign(process.env, webEnv);
-  process.argv = [process.argv[0], nextCli, 'start', '-p', webPort];
-  require(nextCli);
+  function spawnLogged(name, cmd, args, cwd, env) {
+    logLine(logPath, `[hostinger] spawn ${name}: ${cmd} ${args.join(' ')}`);
+    const child = spawn(cmd, args, {
+      cwd,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+    });
+    child.stdout?.on('data', (chunk) => {
+      for (const line of chunk.toString().split('\n').filter(Boolean)) {
+        logLine(logPath, `[${name}] ${line}`);
+      }
+    });
+    child.stderr?.on('data', (chunk) => {
+      for (const line of chunk.toString().split('\n').filter(Boolean)) {
+        logLine(logPath, `[${name}:err] ${line}`);
+      }
+    });
+    child.on('exit', (code, signal) => {
+      logLine(logPath, `[hostinger] ${name} exited code=${code} signal=${signal ?? ''}`);
+      if (code && code !== 0) process.exit(code);
+    });
+    children.push(child);
+    return child;
+  }
+
+  spawnLogged('api', node, ['dist/main.js'], apiDir, apiEnv);
+
+  const apiReady = await waitForPort(apiPort, '127.0.0.1', 45, 1000);
+  if (!apiReady) {
+    logLine(logPath, '[hostinger] WARN: API health check timed out — starting Next anyway.');
+  } else {
+    logLine(logPath, '[hostinger] API ready.');
+  }
+
+  spawnLogged('web', node, [nextCli, 'start', '-p', webPort, '-H', '127.0.0.1'], webDir, webEnv);
+
+  const shutdown = () => {
+    for (const child of children) {
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  logLine(logPath, `[hostinger] Running — API :${apiPort}, web :${webPort}`);
 }
