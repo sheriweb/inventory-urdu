@@ -16,10 +16,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showDemoHints, setShowDemoHints] = useState(false);
 
   useEffect(() => {
-    setShowDemoHints(true);
     if (!hasStoredSession()) return;
     fetchMe(true).then((user) => {
       if (user) {
@@ -67,7 +65,6 @@ export default function LoginPage() {
               <Boxes className="h-6 w-6 text-emerald-700" />
             </div>
             <CardTitle className="text-2xl">داخل ہوں</CardTitle>
-            <p className="text-sm text-slate-500">ای میل اور پاس ورڈ سے — role کے مطابق ڈیش بورڈ کھلے گا</p>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit} className="space-y-4">
@@ -98,12 +95,6 @@ export default function LoginPage() {
                 {loading ? 'براہ کرم انتظار کریں...' : 'داخل ہوں'}
               </Button>
             </form>
-            {showDemoHints ? (
-              <p className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/80 p-3 text-center text-sm text-slate-600" dir="ltr">
-                <span className="block">Shop 1: shop1@inventory.local / Shop1Demo!</span>
-                <span className="block">Shop 2: shop2@inventory.local / Shop2Demo!</span>
-              </p>
-            ) : null}
           </CardContent>
         </Card>
       </main>
