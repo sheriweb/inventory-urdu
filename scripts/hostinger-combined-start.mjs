@@ -248,6 +248,6 @@ if (existsSync(maintenanceFlag)) {
   logLine(logPath, `[hostinger] Starting Next.js in main process on port ${webPort}…`);
   process.chdir(webDir);
   Object.assign(process.env, webEnv);
-  process.argv = [process.argv[0], nextCli, 'start', '-p', webPort, '-H', '127.0.0.1'];
+  process.argv = [process.argv[0], nextCli, 'start', '-p', webPort];
   require(nextCli);
 }
