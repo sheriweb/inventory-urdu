@@ -3,6 +3,7 @@
  */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import net from 'node:net';
 import { parse } from 'node:url';
 import {
   appendFileSync,
@@ -82,7 +83,21 @@ function writeEnvFile(filePath, env) {
   writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
 }
 
-function startApiDetached(apiMain, apiEnv, apiLogPath) {
+function isPortOpen(port, host = '127.0.0.1') {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ port: Number(port), host }, () => {
+      socket.end();
+      resolve(true);
+    });
+    socket.on('error', () => resolve(false));
+    socket.setTimeout(800, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function startApiDetached(apiEnv, apiLogPath) {
   const envFile = path.join(tmpDir, 'api.env');
   const engineLib = path.join(
     modulesDir,
@@ -93,8 +108,6 @@ function startApiDetached(apiMain, apiEnv, apiLogPath) {
   }
   writeEnvFile(envFile, apiEnv);
   const cmd = [
-    `pkill -f ${shellQuote(path.join('apps/api/dist/main.js'))} 2>/dev/null || true`,
-    `sleep 1`,
     `set -a && . ${shellQuote(envFile)} && set +a`,
     `cd ${shellQuote(root)}`,
     `nohup ${shellQuote(node)} ${shellQuote(path.join('apps/api/dist/main.js'))} >> ${shellQuote(apiLogPath)} 2>&1 &`,
@@ -164,6 +177,9 @@ if (existsSync(maintenanceFlag)) {
     HOME: process.env.HOME,
     LANG: process.env.LANG || 'en_US.UTF-8',
     ...fileEnv,
+    DATABASE_URL: fileEnv.DATABASE_URL || process.env.DATABASE_URL,
+    JWT_ACCESS_SECRET: fileEnv.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
+    JWT_REFRESH_SECRET: fileEnv.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET,
     PORT: apiPort,
     API_PORT: apiPort,
     NODE_ENV: 'production',
@@ -208,13 +224,16 @@ if (existsSync(maintenanceFlag)) {
     }
   }
 
-  logLine(
-    logPath,
-    `[hostinger] Starting API via nohup on 127.0.0.1:${apiPort} (DATABASE_URL=${process.env.DATABASE_URL ? 'set' : 'MISSING'})…`,
-  );
-  const apiMain = path.join(apiDir, 'dist/main.js');
   const apiLogPath = path.join(tmpDir, 'api.log');
-  startApiDetached(apiMain, apiEnv, apiLogPath);
+  if (await isPortOpen(apiPort)) {
+    logLine(logPath, `[hostinger] API already listening on 127.0.0.1:${apiPort}`);
+  } else {
+    logLine(
+      logPath,
+      `[hostinger] Starting API via nohup on 127.0.0.1:${apiPort} (DATABASE_URL=${apiEnv.DATABASE_URL ? 'set' : 'MISSING'})…`,
+    );
+    startApiDetached(apiEnv, apiLogPath);
+  }
 
   Object.assign(process.env, webEnv);
   logLine(logPath, `[hostinger] Preparing Next.js (Passenger main process) on port ${webPort}…`);
