@@ -110,15 +110,14 @@ function isPortOpen(port, host = '127.0.0.1') {
 }
 
 function startApiDetached(apiEnv, apiLogPath) {
+  apiEnv.HOSTINGER_COMBINED = '1';
+  apiEnv.LAZY_DB_CONNECT = '1';
   const envFile = path.join(tmpDir, 'api.env');
   writeEnvFile(envFile, apiEnv);
-  const cmd = [
-    `set -a && . ${shellQuote(envFile)} && set +a`,
-    `cd ${shellQuote(root)}`,
-    `nohup ${shellQuote(apiNode)} ${shellQuote(path.join('apps/api/dist/main.js'))} >> ${shellQuote(apiLogPath)} 2>&1 &`,
-  ].join(' && ');
-  spawn('/bin/sh', ['-c', cmd], {
-    env: { PATH: process.env.PATH || '/usr/bin:/bin' },
+  const startScript = path.join(root, 'scripts/start-api-hostinger.sh');
+  chmodSync(startScript, 0o755);
+  spawn('/bin/bash', [startScript], {
+    env: { PATH: process.env.PATH || '/usr/bin:/bin', HOME: process.env.HOME || root },
     detached: true,
     stdio: 'ignore',
   }).unref();
