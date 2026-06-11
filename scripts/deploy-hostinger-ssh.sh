@@ -40,23 +40,40 @@ else
 fi
 
 echo "▶ Uploading to $SSH_USER@$SSH_HOST:$SSH_REMOTE_PATH …"
-sshpass -e rsync -az --delete \
-  -e "ssh ${SSH_OPTS[*]}" \
-  --exclude node_modules \
-  --exclude .git \
-  --exclude uploads \
-  --exclude deploy/secrets.env \
-  --exclude deploy/hostinger-production.env \
-  --exclude .npm-cache \
-  --exclude '.env' \
-  --exclude 'tmp/api.log' \
-  --exclude 'tmp/api.env' \
-  --exclude 'tmp/restart.txt' \
-  --exclude 'tmp/api-dist.tgz' \
-  --exclude 'tmp/*.tgz' \
-  --exclude 'tmp/api-manual*.log' \
-  --exclude 'tmp/manual-web.log' \
-  "$ROOT/" "$SSH_USER@$SSH_HOST:$SSH_REMOTE_PATH/"
+RSYNC_OPTS=(
+  -az --delete
+  --exclude node_modules
+  --exclude .git
+  --exclude uploads
+  --exclude deploy/secrets.env
+  --exclude deploy/hostinger-production.env
+  --exclude .npm-cache
+  --exclude .env
+  --exclude 'tmp/api.log'
+  --exclude 'tmp/api.env'
+  --exclude 'tmp/restart.txt'
+  --exclude 'tmp/api-dist.tgz'
+  --exclude 'tmp/*.tgz'
+  --exclude 'tmp/api-manual*.log'
+  --exclude 'tmp/manual-web.log'
+)
+
+upload_ok=0
+for attempt in 1 2 3 4 5; do
+  if sshpass -e rsync "${RSYNC_OPTS[@]}" \
+    -e "ssh ${SSH_OPTS[*]}" \
+    "$ROOT/" "$SSH_USER@$SSH_HOST:$SSH_REMOTE_PATH/"; then
+    upload_ok=1
+    break
+  fi
+  echo "⚠ rsync attempt $attempt failed — server may be at resource limit, retry in 30s…"
+  sleep 30
+done
+
+if [[ "$upload_ok" != "1" ]]; then
+  echo "❌ Upload failed after 5 attempts. Disable hPanel Git redeploy and wait for resource limits to reset."
+  exit 1
+fi
 
 echo "▶ Server post-deploy…"
 ssh_cmd "cd '$SSH_REMOTE_PATH' && \
