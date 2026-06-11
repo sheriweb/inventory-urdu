@@ -33,11 +33,13 @@ type SaleItemsCompactTableProps = {
 };
 
 export function SaleItemsCompactTable({
-  lines,
-  catalog,
+  lines: linesProp,
+  catalog: catalogProp,
   onChange,
   onCatalogAdded,
 }: SaleItemsCompactTableProps) {
+  const lines = linesProp ?? [];
+  const catalog = catalogProp ?? [];
   function updateLine(key: string, patch: Partial<SaleItemLine>) {
     onChange(lines.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   }

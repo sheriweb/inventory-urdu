@@ -175,7 +175,7 @@ export function CustomerFormPage({
       ]);
       const customer = customerRes.data.data as { guarantors?: Parameters<typeof guarantorFromApi>[0][] };
       setForm(customerToForm(customerRes.data.data));
-      setAreas(areasRes.data.data as Area[]);
+        setAreas(Array.isArray(areasRes.data?.data) ? (areasRes.data.data as Area[]) : []);
       const rows = Array.isArray(customer.guarantors) ? customer.guarantors : [];
       setGuarantorRows(rows);
       setGuarantor(rows[0] ? guarantorFromApi(rows[0]) : emptyGuarantorForm());
@@ -200,7 +200,7 @@ export function CustomerFormPage({
     const d = restoreOffer.data;
     setForm(d.form);
     setGuarantor(d.guarantor ?? emptyGuarantorForm());
-    setItemLines(d.itemLines);
+    setItemLines(Array.isArray(d.itemLines) && d.itemLines.length > 0 ? d.itemLines : [newSaleItemLine()]);
     setSalesmanId(d.salesmanId);
     setRecoveryManId(d.recoveryManId);
     setOutdoorManId(d.outdoorManId);
@@ -236,10 +236,10 @@ export function CustomerFormPage({
           requests.push(api.get('/items'), api.get('/staff'));
         }
         const results = await Promise.all(requests);
-        setAreas(results[0].data.data as Area[]);
+        setAreas(Array.isArray(results[0].data?.data) ? (results[0].data.data as Area[]) : []);
         if (mode === 'create' && results[1] && results[2]) {
-          setCatalog(results[1].data.data as Item[]);
-          setStaff(results[2].data.data as Staff[]);
+          setCatalog(Array.isArray(results[1].data?.data) ? (results[1].data.data as Item[]) : []);
+          setStaff(Array.isArray(results[2].data?.data) ? (results[2].data.data as Staff[]) : []);
           const lastStaff = loadLastUsedStaff();
           if (lastStaff) {
             if (lastStaff.salesmanId) setSalesmanId(lastStaff.salesmanId);

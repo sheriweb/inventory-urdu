@@ -48,6 +48,7 @@ export function SaleItemDetailsEditor({
       unitDetailRows.length !== qty ||
       unitDetailRows.some(
         (unit) =>
+          !Array.isArray(unit.rows) ||
           unit.rows.length !== presetFields.length ||
           !presetFields.every((field) => unit.rows.some((row) => row.label === field.label)) ||
           unit.rows.some((row) => !presetFields.some((field) => field.label === row.label)),
@@ -72,7 +73,7 @@ export function SaleItemDetailsEditor({
         unit.unitIndex === unitIndex
           ? {
               ...unit,
-              rows: unit.rows.map((row) =>
+              rows: (unit.rows ?? []).map((row) =>
                 row.label === label ? { ...row, value } : row,
               ),
             }
@@ -134,7 +135,7 @@ function ReceiptFieldGrid({
   return (
     <div className={cn('grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2', compact && 'lg:grid-cols-3')}>
       {fields.map((field) => {
-        const row = unit.rows.find((entry) => entry.label === field.label);
+        const row = (unit.rows ?? []).find((entry) => entry.label === field.label);
         return (
           <div key={field.key} className="min-w-0">
             <label className={cn('mb-0.5 block font-medium text-slate-700', compact ? 'text-xs' : 'text-sm')}>

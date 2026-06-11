@@ -98,6 +98,7 @@ function unitRowsMatchFields(
   if (rows.length !== qty) return false;
   return rows.every(
     (unit) =>
+      Array.isArray(unit.rows) &&
       unit.rows.length === fields.length &&
       fields.every((field) => unit.rows.some((row) => row.label === field.label)),
   );

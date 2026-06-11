@@ -129,7 +129,7 @@ export function resizeUnitDetailRowsWithFields(
     return {
       unitIndex,
       rows: normalized.map((field) => {
-        const existingRow = existing?.rows.find((row) => row.label === field.label);
+        const existingRow = existing?.rows?.find((row) => row.label === field.label);
         return newSaleDetailRow(field.label, existingRow?.value ?? '');
       }),
     };
