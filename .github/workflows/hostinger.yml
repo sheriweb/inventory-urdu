@@ -1,0 +1,65 @@
+# Hostinger deployment pipeline
+# - push main → build check (Hostinger Git auto-deploys from GitHub)
+# - manual → build + SSH upload (backup if Git deploy fails)
+
+name: Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ssh_deploy:
+        description: Deploy to server via SSH after build
+        type: boolean
+        default: true
+
+concurrency:
+  group: hostinger-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Production build
+        env:
+          HOSTINGER_COMBINED: '1'
+          INTERNAL_API_URL: http://127.0.0.1:4001
+          NEXT_PUBLIC_API_URL: https://qistpro.shop/api/v1
+        run: npm run hostinger:build
+
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.ssh_deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install sshpass & rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+
+      - name: Build and upload via SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SSH_REMOTE_PATH: ${{ secrets.SSH_REMOTE_PATH }}
+        run: bash scripts/deploy-hostinger-ssh.sh

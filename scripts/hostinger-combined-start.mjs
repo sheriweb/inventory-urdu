@@ -1,5 +1,5 @@
 /**
- * Hostinger single Node.js app: runs API internally + Next.js on $PORT.
+ * Hostinger Node.js app: API internally + Next.js on $PORT.
  * Next.js rewrites proxy /api/v1/* to the internal API.
  */
 import { spawn, execSync } from 'node:child_process';
@@ -7,7 +7,6 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
-  openSync,
   readFileSync,
   rmSync,
   statSync,
@@ -44,11 +43,6 @@ function logLine(logPath, message) {
   }
 }
 
-function killStaleProcesses(_apiDir, logPath) {
-  // cPanel shared hosting: pkill/spawn limits cause EAGAIN — skip on production.
-  logLine(logPath, '[hostinger] Skipping stale process cleanup (cPanel safe mode)');
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -60,11 +54,11 @@ const tmpDir = path.join(root, 'tmp');
 const logPath = path.join(tmpDir, 'hostinger.log');
 const maintenanceFlag = path.join(root, '.maintenance');
 const node = process.execPath;
+const modulesDir = path.join(root, 'node_modules');
 
-/** Auto-load env — cPanel mein manually env vars add karne ki zaroorat nahi. */
 function loadProductionEnv() {
   const files = [
-    path.join(root, 'leasing-store-production.env'),
+    path.join(root, 'hostinger-production.env'),
     path.join(root, '.env'),
     path.join(apiDir, '.env'),
   ];
@@ -82,45 +76,7 @@ function loadProductionEnv() {
 
 loadProductionEnv();
 
-/**
- * Shared hosting FTP can't upload 10k+ small files reliably, so deploy ships a single
- * node_modules.tar.gz. Extract it on first boot (or when deps change) using the system tar.
- */
-function ensureRuntimeModules() {
-  const tarball = path.join(root, 'node_modules.tar.gz');
-  if (!existsSync(tarball)) return;
-  const nmPath = path.join(root, 'node_modules');
-  const localNext = path.join(nmPath, 'next/dist/bin/next');
-  const stamp = path.join(nmPath, '.tarball-stamp');
-
-  let needExtract = !existsSync(localNext);
-  try {
-    const tarMtime = statSync(tarball).mtimeMs;
-    const stampMtime = existsSync(stamp) ? statSync(stamp).mtimeMs : 0;
-    if (tarMtime > stampMtime) needExtract = true;
-  } catch {
-    /* ignore */
-  }
-  if (!needExtract) return;
-
-  try {
-    mkdirSync(tmpDir, { recursive: true });
-    logLine(logPath, '[hostinger] Extracting node_modules.tar.gz (first boot / deps changed)…');
-    rmSync(nmPath, { recursive: true, force: true });
-    mkdirSync(nmPath, { recursive: true });
-    execSync(`tar -xzf ${JSON.stringify(tarball)} -C ${JSON.stringify(nmPath)}`, {
-      cwd: root,
-      stdio: 'inherit',
-    });
-    writeFileSync(stamp, new Date().toISOString());
-    logLine(logPath, '[hostinger] node_modules ready.');
-  } catch (err) {
-    logLine(logPath, `[hostinger] node_modules extract failed: ${err}`);
-  }
-}
-
-mkdirSync(path.join(root, 'tmp'), { recursive: true });
-ensureRuntimeModules();
+mkdirSync(tmpDir, { recursive: true });
 
 function resolveTool(...candidates) {
   for (const candidate of candidates) {
@@ -129,33 +85,27 @@ function resolveTool(...candidates) {
   return null;
 }
 
-const nodevenvModules = '/home/leasings/nodevenv/inventory-urdu/20/lib/node_modules';
 const prismaCli = resolveTool(
-  path.join(nodevenvModules, 'prisma/build/index.js'),
-  path.join(root, 'node_modules/prisma/build/index.js'),
+  path.join(modulesDir, 'prisma/build/index.js'),
   path.join(apiDir, 'node_modules/prisma/build/index.js'),
 );
 const nextCli = resolveTool(
-  path.join(nodevenvModules, 'next/dist/bin/next'),
-  path.join(root, 'node_modules/next/dist/bin/next'),
+  path.join(modulesDir, 'next/dist/bin/next'),
   path.join(webDir, 'node_modules/next/dist/bin/next'),
 );
 const tsNodeCli = resolveTool(
-  path.join(nodevenvModules, 'ts-node/dist/bin.js'),
-  path.join(root, 'node_modules/ts-node/dist/bin.js'),
+  path.join(modulesDir, 'ts-node/dist/bin.js'),
   path.join(apiDir, 'node_modules/ts-node/dist/bin.js'),
 );
 const apiPort = process.env.API_INTERNAL_PORT || '4001';
-const webPort = process.env.PORT || '3001';
+const webPort = process.env.PORT || '3000';
 
-mkdirSync(tmpDir, { recursive: true });
 logLine(logPath, `[hostinger] Boot (pid ${process.pid})`);
 
 if (existsSync(maintenanceFlag)) {
-  logLine(logPath, '[hostinger] MAINTENANCE MODE (.maintenance file) — app paused for npm install.');
-  console.log('Maintenance mode: delete .maintenance on server then RESTART app.');
+  logLine(logPath, '[hostinger] MAINTENANCE MODE (.maintenance file) — app paused.');
+  console.log('Maintenance mode: delete .maintenance on server then restart app.');
   setInterval(() => {}, 60_000);
-  // Keep process alive so Passenger stops crash-loop / lock errors.
 } else if (!existsSync(path.join(apiDir, 'dist/main.js'))) {
   logLine(logPath, '[hostinger] FATAL: apps/api/dist/main.js missing — run npm run hostinger:build');
   process.exit(1);
@@ -163,40 +113,41 @@ if (existsSync(maintenanceFlag)) {
   logLine(logPath, '[hostinger] FATAL: apps/web/.next build missing — run npm run hostinger:build');
   process.exit(1);
 } else {
-  killStaleProcesses(apiDir, logPath);
+  const fileEnv = loadProductionEnv();
+  const nodePath = [modulesDir, path.join(apiDir, 'node_modules'), path.join(webDir, 'node_modules')]
+    .filter((p) => existsSync(p))
+    .join(path.delimiter);
 
-const fileEnv = loadProductionEnv();
-const nodePath = [nodevenvModules, path.join(root, 'node_modules')].filter((p) => existsSync(p)).join(path.delimiter);
-const apiEnv = {
-  ...process.env,
-  ...fileEnv,
-  PORT: apiPort,
-  API_PORT: apiPort,
-  NODE_ENV: process.env.NODE_ENV || 'production',
-  NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=384',
-  NODE_PATH: nodePath,
-};
+  const apiEnv = {
+    ...process.env,
+    ...fileEnv,
+    PORT: apiPort,
+    API_PORT: apiPort,
+    NODE_ENV: process.env.NODE_ENV || 'production',
+    NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=384',
+    NODE_PATH: nodePath,
+  };
 
-const webEnv = {
-  ...process.env,
-  PORT: webPort,
-  HOSTINGER_COMBINED: '1',
-  INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
-  NODE_ENV: process.env.NODE_ENV || 'production',
-  NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=512',
-};
+  const webEnv = {
+    ...process.env,
+    PORT: webPort,
+    HOSTINGER_COMBINED: '1',
+    INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
+    NODE_ENV: process.env.NODE_ENV || 'production',
+    NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=512',
+  };
 
-function runOnce(cmd, args, cwd, env) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, env, stdio: 'inherit', shell: false });
-    child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exit ${code}`))));
-  });
-}
+  function runOnce(cmd, args, cwd, env) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(cmd, args, { cwd, env, stdio: 'inherit', shell: false });
+      child.on('error', reject);
+      child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exit ${code}`))));
+    });
+  }
 
   if (process.env.RUN_DB_SETUP === '1') {
     if (!prismaCli) {
-      logLine(logPath, '[hostinger] RUN_DB_SETUP skipped — prisma CLI not found (run npm install).');
+      logLine(logPath, '[hostinger] RUN_DB_SETUP skipped — prisma CLI not found.');
     } else {
       try {
         logLine(logPath, '[hostinger] RUN_DB_SETUP=1 — pushing schema…');
@@ -208,8 +159,6 @@ function runOnce(cmd, args, cwd, env) {
             apiDir,
             apiEnv,
           );
-        } else if (process.env.FORCE_DB_SETUP === '1') {
-          logLine(logPath, '[hostinger] Seed skipped — ts-node not found.');
         }
         logLine(logPath, '[hostinger] DB setup complete.');
       } catch (err) {
@@ -219,11 +168,10 @@ function runOnce(cmd, args, cwd, env) {
   }
 
   if (!nextCli) {
-    logLine(logPath, '[hostinger] FATAL: next CLI missing — run npm install in cPanel.');
+    logLine(logPath, '[hostinger] FATAL: next CLI missing — run npm ci on server.');
     process.exit(1);
   }
 
-  // Single Node process (cPanel process limits) — no child spawn.
   logLine(logPath, `[hostinger] Starting API in-process on 127.0.0.1:${apiPort}…`);
   Object.assign(process.env, apiEnv);
   process.chdir(apiDir);
@@ -233,6 +181,6 @@ function runOnce(cmd, args, cwd, env) {
   logLine(logPath, `[hostinger] Starting Next.js on port ${webPort}…`);
   process.chdir(webDir);
   Object.assign(process.env, webEnv);
-  process.argv = [process.argv[0], nextCli, 'start'];
+  process.argv = [process.argv[0], nextCli, 'start', '-p', webPort];
   require(nextCli);
 }
