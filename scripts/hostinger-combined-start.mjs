@@ -13,7 +13,10 @@ import {
   readdirSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 function loadDotEnv(filePath) {
   try {
