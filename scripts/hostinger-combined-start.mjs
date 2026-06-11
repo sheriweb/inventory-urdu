@@ -3,7 +3,6 @@
  * Next.js rewrites proxy /api/v1/* to the internal API.
  */
 import { spawn } from 'node:child_process';
-import net from 'node:net';
 import {
   appendFileSync,
   chmodSync,
@@ -13,10 +12,7 @@ import {
   readdirSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import path from 'node:path';
-
-const require = createRequire(import.meta.url);
 
 function loadDotEnv(filePath) {
   try {
@@ -116,6 +112,7 @@ function loadProductionEnv() {
 
 loadProductionEnv();
 mkdirSync(tmpDir, { recursive: true });
+process.chdir(root);
 fixPrismaEnginePermissions(modulesDir);
 fixPrismaEnginePermissions(path.join(apiDir, 'node_modules'));
 
@@ -234,12 +231,20 @@ if (existsSync(maintenanceFlag)) {
     return child;
   }
 
-  spawnLogged('api', node, ['dist/main.js'], apiDir, apiEnv);
+  spawnLogged('api', node, [path.join(apiDir, 'dist/main.js')], apiDir, apiEnv);
 
   // Start Next immediately — Hostinger expects PORT to open quickly.
-  logLine(logPath, `[hostinger] Starting Next.js in main process on port ${webPort}…`);
-  process.chdir(webDir);
-  Object.assign(process.env, webEnv);
-  process.argv = [process.argv[0], nextCli, 'start', '-p', webPort];
-  require(nextCli);
+  logLine(logPath, `[hostinger] Starting Next.js on port ${webPort}…`);
+  const nextProc = spawn(node, [nextCli, 'start', '-p', webPort], {
+    cwd: webDir,
+    env: webEnv,
+    stdio: 'inherit',
+    shell: false,
+  });
+  await new Promise((resolve, reject) => {
+    nextProc.on('error', reject);
+    nextProc.on('exit', (code) =>
+      code === 0 ? resolve() : reject(new Error(`next exit ${code}`)),
+    );
+  });
 }
