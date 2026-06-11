@@ -236,24 +236,15 @@ if (existsSync(maintenanceFlag)) {
 
   const apiReady = await waitForPort(apiPort, '127.0.0.1', 45, 1000);
   if (!apiReady) {
-    logLine(logPath, '[hostinger] WARN: API health check timed out — starting Next anyway.');
+    logLine(logPath, '[hostinger] WARN: API port check timed out — starting Next anyway.');
   } else {
     logLine(logPath, '[hostinger] API ready.');
   }
 
-  spawnLogged('web', node, [nextCli, 'start', '-p', webPort, '-H', '127.0.0.1'], webDir, webEnv);
-
-  const shutdown = () => {
-    for (const child of children) {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-
-  logLine(logPath, `[hostinger] Running — API :${apiPort}, web :${webPort}`);
+  // Keep Hostinger's monitored process as Next.js (single extra child for API).
+  logLine(logPath, `[hostinger] Starting Next.js in main process on port ${webPort}…`);
+  process.chdir(webDir);
+  Object.assign(process.env, webEnv);
+  process.argv = [process.argv[0], nextCli, 'start', '-p', webPort, '-H', '127.0.0.1'];
+  require(nextCli);
 }
