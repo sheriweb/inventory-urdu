@@ -76,8 +76,8 @@ const maintenanceFlag = path.join(root, '.maintenance');
 const node = process.execPath;
 const apiNode =
   process.env.API_NODE_BIN ||
-  (existsSync('/opt/alt/alt-nodejs18/root/bin/node')
-    ? '/opt/alt/alt-nodejs18/root/bin/node'
+  (existsSync('/opt/alt/alt-nodejs20/root/bin/node')
+    ? '/opt/alt/alt-nodejs20/root/bin/node'
     : node);
 const modulesDir = path.join(root, 'node_modules');
 
@@ -112,6 +112,8 @@ function isPortOpen(port, host = '127.0.0.1') {
 function startApiDetached(apiEnv, apiLogPath) {
   apiEnv.HOSTINGER_COMBINED = '1';
   apiEnv.LAZY_DB_CONNECT = '1';
+  apiEnv.UV_THREADPOOL_SIZE = '2';
+  apiEnv.API_NODE_BIN = apiNode;
   const envFile = path.join(tmpDir, 'api.env');
   writeEnvFile(envFile, apiEnv);
   const startScript = path.join(root, 'scripts/start-api-hostinger.sh');
@@ -234,12 +236,17 @@ if (existsSync(maintenanceFlag)) {
   const apiLogPath = path.join(tmpDir, 'api.log');
   if (await isPortOpen(apiPort)) {
     logLine(logPath, `[hostinger] API already listening on 127.0.0.1:${apiPort}`);
+  } else if (process.env.START_API_ON_BOOT === '1') {
+    logLine(
+      logPath,
+      `[hostinger] Starting API (${apiNode}) on 127.0.0.1:${apiPort}…`,
+    );
+    startApiDetached(apiEnv, apiLogPath);
   } else {
     logLine(
       logPath,
-      `[hostinger] Starting API via nohup (${apiNode}) on 127.0.0.1:${apiPort} (DATABASE_URL=${apiEnv.DATABASE_URL ? 'set' : 'MISSING'})…`,
+      `[hostinger] API not on :${apiPort} — run: bash scripts/start-api-hostinger.sh`,
     );
-    startApiDetached(apiEnv, apiLogPath);
   }
 
   Object.assign(process.env, webEnv);
