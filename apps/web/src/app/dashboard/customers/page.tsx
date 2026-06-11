@@ -78,8 +78,9 @@ export default function CustomersPage() {
       const customersRes = await api.get('/customers', {
         params: { page, limit: 10, q: debouncedQ.trim() || undefined },
       });
-      setCustomers(customersRes.data.data as CustomerRow[]);
-      setTotalItems(customersRes.data.meta?.total ?? customersRes.data.data.length);
+      const rows = Array.isArray(customersRes.data?.data) ? (customersRes.data.data as CustomerRow[]) : [];
+      setCustomers(rows);
+      setTotalItems(customersRes.data?.meta?.total ?? rows.length);
     } catch {
       setError('گاہک لوڈ نہیں ہو سکے');
     } finally {

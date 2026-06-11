@@ -82,8 +82,9 @@ export default function AccountsPage() {
       if (from) params.from = from;
       if (to) params.to = to;
       const { data } = await api.get('/leases', { params });
-      setRows(data.data as AccountRow[]);
-      setTotalItems(data.meta?.total ?? data.data.length);
+      const rows = Array.isArray(data?.data) ? (data.data as AccountRow[]) : [];
+      setRows(rows);
+      setTotalItems(data?.meta?.total ?? rows.length);
     } catch {
       setError('کھاتے لوڈ نہیں ہو سکے');
       setRows([]);

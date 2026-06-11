@@ -56,9 +56,10 @@ export default function ItemsPage() {
         api.get('/items', { params: { page, limit: 12, q: debouncedQ.trim() || undefined } }),
         api.get('/companies'),
       ]);
-      setItems(itemsRes.data.data as ItemRow[]);
-      setTotalItems(itemsRes.data.meta?.total ?? itemsRes.data.data.length);
-      setCompanies(companiesRes.data.data as Company[]);
+      const rows = Array.isArray(itemsRes.data?.data) ? (itemsRes.data.data as ItemRow[]) : [];
+      setItems(rows);
+      setTotalItems(itemsRes.data?.meta?.total ?? rows.length);
+      setCompanies(Array.isArray(companiesRes.data?.data) ? (companiesRes.data.data as Company[]) : []);
     } catch {
       setError('ڈیٹا لوڈ نہیں ہو سکا');
     } finally {

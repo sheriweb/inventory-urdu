@@ -99,6 +99,7 @@ export function DataTable<T>({
   compact = false,
   minTableWidth,
 }: DataTableProps<T>) {
+  const safeData = data ?? [];
   const [internalQuery, setInternalQuery] = React.useState('');
   const isServer = paginationMode === 'server';
   const query = isServer && onSearchChange !== undefined ? (searchValue ?? '') : internalQuery;
@@ -112,16 +113,16 @@ export function DataTable<T>({
   }
 
   const filtered = React.useMemo(() => {
-    if (isServer || !searchKeys) return data;
+    if (isServer || !searchKeys) return safeData;
     const q = query.trim().toLowerCase();
-    if (!q) return data;
-    return data.filter((row) => searchKeys(row).toLowerCase().includes(q));
-  }, [data, query, searchKeys, isServer]);
+    if (!q) return safeData;
+    return safeData.filter((row) => searchKeys(row).toLowerCase().includes(q));
+  }, [safeData, query, searchKeys, isServer]);
 
   const clientPagination = useTablePagination(filtered.length, pageSize, [query]);
-  const pageRows = isServer ? data : clientPagination.pageSlice(filtered);
+  const pageRows = isServer ? safeData : clientPagination.pageSlice(filtered);
 
-  const totalCount = isServer ? (totalItems ?? data.length) : filtered.length;
+  const totalCount = isServer ? (totalItems ?? safeData.length) : filtered.length;
   const serverPage = page ?? 1;
   const serverTotalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const serverSafePage = Math.min(serverPage, serverTotalPages);
