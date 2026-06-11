@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Backup deploy: CI/local build → rsync → prisma db push on server.
-# Primary deploy: Hostinger hPanel Git (auto on git push).
+# GitHub Actions / local: build on CI machine → rsync to Hostinger → post-deploy on server.
+# Build runs on GitHub (not Hostinger) to avoid resource limit errors.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,7 +18,7 @@ SSH_PORT="${SSH_PORT:-65002}"
 SSH_USER="${SSH_USER:?Set SSH_USER secret or deploy/secrets.env}"
 SSH_PASSWORD="${SSH_PASSWORD:?Set SSH_PASSWORD secret or deploy/secrets.env}"
 DATABASE_URL="${DATABASE_URL:?Set DATABASE_URL secret or deploy/secrets.env}"
-SSH_REMOTE_PATH="${SSH_REMOTE_PATH:-/home/u938549775/domains/qistpro.shop/nodejs}"
+SSH_REMOTE_PATH="${SSH_REMOTE_PATH:-/home/u972626041/domains/qistpro.shop/nodejs}"
 
 SSH_OPTS=(-o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -p "$SSH_PORT")
 export SSHPASS="$SSH_PASSWORD"
@@ -27,29 +27,41 @@ ssh_cmd() {
   sshpass -e ssh "${SSH_OPTS[@]}" "$SSH_USER@$SSH_HOST" "$@"
 }
 
-echo "▶ Building locally…"
 cd "$ROOT"
-npm ci
-HOSTINGER_COMBINED=1 INTERNAL_API_URL=http://127.0.0.1:4001 \
-  NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://qistpro.shop/api/v1}" \
-  npm run hostinger:build
+
+if [[ "${SKIP_LOCAL_BUILD:-0}" != "1" ]]; then
+  echo "▶ Building on CI (not on Hostinger)…"
+  npm ci
+  HOSTINGER_COMBINED=1 INTERNAL_API_URL=http://127.0.0.1:4001 \
+    NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://qistpro.shop/api/v1}" \
+    npm run hostinger:build
+else
+  echo "▶ Skipping build (SKIP_LOCAL_BUILD=1)"
+fi
 
 echo "▶ Uploading to $SSH_USER@$SSH_HOST:$SSH_REMOTE_PATH …"
-sshpass -e rsync -az \
+sshpass -e rsync -az --delete \
   -e "ssh ${SSH_OPTS[*]}" \
-  --delete \
   --exclude node_modules \
   --exclude .git \
   --exclude uploads \
   --exclude deploy/secrets.env \
+  --exclude deploy/hostinger-production.env \
   --exclude .npm-cache \
+  --exclude '.env' \
+  --exclude 'tmp/api.log' \
+  --exclude 'tmp/api.env' \
+  --exclude 'tmp/restart.txt' \
+  --exclude 'tmp/api-dist.tgz' \
+  --exclude 'tmp/*.tgz' \
+  --exclude 'tmp/api-manual*.log' \
+  --exclude 'tmp/manual-web.log' \
   "$ROOT/" "$SSH_USER@$SSH_HOST:$SSH_REMOTE_PATH/"
 
-echo "▶ Server: install deps, sync DB…"
+echo "▶ Server post-deploy…"
 ssh_cmd "cd '$SSH_REMOTE_PATH' && \
-  npm ci --omit=dev --no-audit --no-fund && \
-  npm run db:generate -w @inventory-urdu/api && \
-  cd apps/api && \
   export DATABASE_URL='$DATABASE_URL' && \
-  node ../../node_modules/prisma/build/index.js db push --skip-generate && \
-  echo '✅ SSH deploy complete — restart app from hPanel if needed'"
+  export RUN_DB_SETUP='${RUN_DB_SETUP:-0}' && \
+  bash scripts/post-deploy-hostinger.sh"
+
+echo "✅ Deploy complete — https://qistpro.shop"
