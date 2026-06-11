@@ -236,14 +236,7 @@ if (existsSync(maintenanceFlag)) {
 
   spawnLogged('api', node, ['dist/main.js'], apiDir, apiEnv);
 
-  const apiReady = await waitForPort(apiPort, '127.0.0.1', 45, 1000);
-  if (!apiReady) {
-    logLine(logPath, '[hostinger] WARN: API port check timed out — starting Next anyway.');
-  } else {
-    logLine(logPath, '[hostinger] API ready.');
-  }
-
-  // Keep Hostinger's monitored process as Next.js (single extra child for API).
+  // Start Next immediately — Hostinger expects PORT to open quickly.
   logLine(logPath, `[hostinger] Starting Next.js in main process on port ${webPort}…`);
   process.chdir(webDir);
   Object.assign(process.env, webEnv);
