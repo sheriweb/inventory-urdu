@@ -234,9 +234,12 @@ if (existsSync(maintenanceFlag)) {
   }
 
   const apiLogPath = path.join(tmpDir, 'api.log');
+  writeEnvFile(path.join(tmpDir, 'api.env'), apiEnv);
+
+  const startApiOnBoot = process.env.START_API_ON_BOOT !== '0';
   if (await isPortOpen(apiPort)) {
     logLine(logPath, `[hostinger] API already listening on 127.0.0.1:${apiPort}`);
-  } else if (process.env.START_API_ON_BOOT === '1') {
+  } else if (startApiOnBoot) {
     logLine(
       logPath,
       `[hostinger] Starting API (${apiNode}) on 127.0.0.1:${apiPort}…`,

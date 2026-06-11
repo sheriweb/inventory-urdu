@@ -23,6 +23,16 @@ if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
+elif [[ -f "$ROOT/hostinger-production.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT/hostinger-production.env"
+  set +a
+elif [[ -f "$ROOT/deploy/hostinger-production.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT/deploy/hostinger-production.env"
+  set +a
 fi
 
 cd "$ROOT"
