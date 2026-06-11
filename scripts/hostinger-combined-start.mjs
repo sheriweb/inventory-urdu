@@ -229,7 +229,6 @@ if (existsSync(maintenanceFlag)) {
     });
     child.on('exit', (code, signal) => {
       logLine(logPath, `[hostinger] ${name} exited code=${code} signal=${signal ?? ''}`);
-      if (code && code !== 0) process.exit(code);
     });
     children.push(child);
     return child;
