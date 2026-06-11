@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Save } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse, recordFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -141,7 +142,7 @@ export function LeaseEditForm({ leaseId }: LeaseEditFormProps) {
     (async () => {
       try {
         const { data } = await api.get('/staff');
-        setStaff(data.data as Staff[]);
+        setStaff(listFromResponse<Staff>({ data }).rows);
       } catch {
         /* ignore */
       }
@@ -154,7 +155,11 @@ export function LeaseEditForm({ leaseId }: LeaseEditFormProps) {
     setError('');
     try {
       const { data } = await api.get(`/leases/${leaseId}`);
-      const row = data.data as LeaseEditData;
+      const row = recordFromResponse<LeaseEditData>({ data });
+      if (!row) {
+        setError('کھاتہ لوڈ نہیں ہو سکا');
+        return;
+      }
       setLease(row);
       setAccountNumberInput(String(row.accountNumber));
       const firstReceipt = row.payments?.[0]?.receiptNumber;

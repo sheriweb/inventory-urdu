@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { AxiosError } from 'axios';
 import { AlertTriangle, Banknote, Bell, CalendarClock, ShieldAlert, Wallet } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, recordFromResponse } from '@/lib/api-response';
 import { fmtMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertBanner } from '@/components/ui/alert-banner';
@@ -58,13 +59,15 @@ async function loadStatsFromLegacyApis(): Promise<{ stats: DashboardStats; parag
   type PaymentRow = { amount: string | number; paymentType: string };
   type ListRow = { nextDueInstallment?: { dueDate: string } | null };
 
-  const payments = (paymentsRes.data.data ?? []) as PaymentRow[];
+  const payments = asArray<PaymentRow>(paymentsRes.data?.data);
   const installmentPayments = payments.filter((p) => p.paymentType === 'INSTALLMENT');
   const todayCollectionCount = installmentPayments.length;
   const todayCollectionAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const listPayload = listRes.data.data as ListRow[] | { rows?: ListRow[] };
-  const list = Array.isArray(listPayload) ? listPayload : (listPayload.rows ?? []);
+  const listRaw = listRes.data?.data;
+  const list = Array.isArray(listRaw)
+    ? (listRaw as ListRow[])
+    : asArray<ListRow>((listRaw as { rows?: ListRow[] } | null)?.rows);
   let todayDueCount = 0;
   let overdueCount = 0;
 
@@ -107,16 +110,19 @@ export function DashboardOverview() {
     setError('');
     try {
       const { data } = await api.get('/reports/daily-summary');
-      const summary = data.data as DailySummaryResponse;
-      setStats(summary.stats);
-      setParagraphUrdu(summary.paragraphUrdu);
+      const summary = recordFromResponse<DailySummaryResponse>({ data });
+      if (summary?.stats) {
+        setStats(summary.stats);
+        setParagraphUrdu(summary.paragraphUrdu ?? '');
+        return;
+      }
     } catch (err) {
       const status = (err as AxiosError)?.response?.status;
       if (status === 404) {
         try {
           const { data } = await api.get('/recovery/dashboard-stats');
-          const legacyStats = data.data as DashboardStats;
-          setStats(legacyStats);
+          const legacyStats = recordFromResponse<DashboardStats>({ data });
+          if (legacyStats) setStats(legacyStats);
           const legacy = await loadStatsFromLegacyApis();
           setParagraphUrdu(legacy.paragraphUrdu);
           return;

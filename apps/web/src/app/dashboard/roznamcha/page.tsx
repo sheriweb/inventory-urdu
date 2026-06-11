@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, recordFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -115,8 +116,8 @@ export default function RoznamchaRegisterPage() {
         api.get('/roznamcha/entries', { params: { from, to } }),
         api.get('/roznamcha/daily-balance', { params: { date: to } }),
       ]);
-      setData(entriesRes.data.data as EntriesResponse);
-      setDaily(dailyRes.data.data as DailyBalance);
+      setData(recordFromResponse<EntriesResponse>(entriesRes));
+      setDaily(recordFromResponse<DailyBalance>(dailyRes));
     } catch {
       setError('روزنامچہ لوڈ نہیں ہو سکا');
       setData(null);
@@ -150,7 +151,7 @@ export default function RoznamchaRegisterPage() {
     setAccountsLoading(true);
     try {
       const { data } = await api.get('/roznamcha/expense-accounts');
-      setAccounts(data.data as ExpenseAccount[]);
+      setAccounts(asArray<ExpenseAccount>(data?.data));
     } catch {
       setError('خرچہ اکاؤنٹس لوڈ نہیں ہو سکے');
     } finally {

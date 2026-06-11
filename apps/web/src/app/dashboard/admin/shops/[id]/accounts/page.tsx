@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
+import { listFromResponse, recordFromResponse } from '@/lib/api-response';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,10 +62,11 @@ export default function AdminShopAccountsPage() {
           },
         }),
       ]);
-      const shopData = shopRes.data.data as { id: string; name: string };
-      setShop({ id: shopData.id, name: shopData.name });
-      setRows(listRes.data.data as LeaseRow[]);
-      setTotalItems(listRes.data.meta?.total ?? listRes.data.data.length);
+      const shopData = recordFromResponse<{ id: string; name: string }>(shopRes);
+      if (shopData) setShop({ id: shopData.id, name: shopData.name });
+      const { rows, total } = listFromResponse<LeaseRow>(listRes);
+      setRows(rows);
+      setTotalItems(total);
     } catch {
       setError('کھاتے لوڈ نہیں ہو سکے');
     } finally {

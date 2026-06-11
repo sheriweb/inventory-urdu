@@ -40,8 +40,13 @@ export function SaleItemsCompactTable({
 }: SaleItemsCompactTableProps) {
   const lines = linesProp ?? [];
   const catalog = catalogProp ?? [];
+
+  function emitChange(next: SaleItemLine[]) {
+    onChange(Array.isArray(next) ? next : []);
+  }
+
   function updateLine(key: string, patch: Partial<SaleItemLine>) {
-    onChange(lines.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+    emitChange(lines.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   }
 
   function onCatalogSelect(key: string, itemId: string) {
@@ -49,7 +54,7 @@ export function SaleItemsCompactTable({
     if (!line) return;
     const item = catalog.find((i) => i.id === itemId);
     if (!item) {
-      onChange(
+      emitChange(
         lines.map((row) =>
           row.key === key
             ? syncLineUnitDetails(
@@ -67,11 +72,11 @@ export function SaleItemsCompactTable({
       );
       return;
     }
-    onChange(lines.map((row) => (row.key === key ? applyCatalogToLine(row, item, itemId) : row)));
+    emitChange(lines.map((row) => (row.key === key ? applyCatalogToLine(row, item, itemId) : row)));
   }
 
   function onSaleTypeChange(key: string, saleType: ItemSaleType) {
-    onChange(
+    emitChange(
       lines.map((line) => {
         if (line.key !== key) return line;
         return syncLineUnitDetails(
@@ -89,7 +94,7 @@ export function SaleItemsCompactTable({
   }
 
   function onQuantityChange(key: string, quantityValue: string) {
-    onChange(
+    emitChange(
       lines.map((line) => {
         if (line.key !== key) return line;
         return syncLineUnitDetails({ ...line, quantity: quantityValue }, catalog);
@@ -98,12 +103,12 @@ export function SaleItemsCompactTable({
   }
 
   function addRow() {
-    onChange([...lines, newSaleItemLine()]);
+    emitChange([...lines, newSaleItemLine()]);
   }
 
   function removeRow(key: string) {
     if (lines.length <= 1) return;
-    onChange(lines.filter((row) => row.key !== key));
+    emitChange(lines.filter((row) => row.key !== key));
   }
 
   const total = grandTotalFromLines(lines);

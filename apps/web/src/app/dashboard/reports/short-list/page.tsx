@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { asArray } from '@/lib/api-response';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { ReportFilters, buildReportParams } from '@/components/reports/report-filters';
@@ -60,7 +61,7 @@ export default function ShortListReportPage() {
       const { data } = await api.get('/reports/short-list', {
         params: buildReportParams(from, to, recoveryManId),
       });
-      setRows(data.data as ShortRow[]);
+      setRows(asArray<ShortRow>(data?.data));
     } catch {
       setError('شارٹ لسٹ رپورٹ لوڈ نہیں ہو سکی');
       setRows([]);

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,7 @@ export default function CompaniesPage() {
     setError('');
     try {
       const { data } = await api.get('/companies');
-      setCompanies(data.data as Company[]);
+      setCompanies(asArray<Company>(data?.data));
     } catch {
       setError('کمپنیاں لوڈ نہیں ہو سکیں');
     } finally {

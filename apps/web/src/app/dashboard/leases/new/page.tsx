@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { List } from 'lucide-react';
 import api from '@/lib/api';
+import { listFromResponse, recordFromResponse, asArray } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -213,10 +214,10 @@ export default function NewLeasePage() {
         api.get('/areas'),
         api.get('/leases/preview-meta'),
       ]);
-      setStaff(Array.isArray(staffRes.data?.data) ? (staffRes.data.data as StaffRow[]) : []);
-      setCatalog(Array.isArray(itemsRes.data?.data) ? (itemsRes.data.data as ItemRow[]) : []);
-      setAreas(Array.isArray(areasRes.data?.data) ? (areasRes.data.data as Area[]) : []);
-      const meta = metaRes.data?.data as { nextAccountNumber?: number; nextReceiptNumber?: number };
+      setStaff(listFromResponse<StaffRow>(staffRes).rows);
+      setCatalog(listFromResponse<ItemRow>(itemsRes).rows);
+      setAreas(listFromResponse<Area>(areasRes).rows);
+      const meta = recordFromResponse<{ nextAccountNumber?: number; nextReceiptNumber?: number }>(metaRes);
       setAccountNumberInput(
         meta?.nextAccountNumber != null ? String(meta.nextAccountNumber) : '',
       );
@@ -251,7 +252,8 @@ export default function NewLeasePage() {
   const loadCustomerDetails = useCallback(async (id: string) => {
     try {
       const { data } = await api.get(`/customers/${id}`);
-      const customer = data.data as CustomerDetail;
+      const customer = recordFromResponse<CustomerDetail>({ data });
+      if (!customer) return;
       setCustomerName(customer.name ?? '');
       setCustomerFatherName(customer.fatherOrHusbandName ?? '');
       setCustomerCnic(customer.cnic ?? '');
@@ -289,7 +291,7 @@ export default function NewLeasePage() {
   const loadGuarantors = useCallback(async (id: string) => {
     try {
       const { data } = await api.get(`/customers/${id}/guarantors`);
-      const rows = Array.isArray(data.data) ? (data.data as GuarantorRow[]) : [];
+      const rows = asArray<GuarantorRow>(data?.data);
       setGuarantors(rows);
       setGuarantor((prev) => {
         const keep = rows.find((g) => g.id === prev.id);
@@ -362,7 +364,7 @@ export default function NewLeasePage() {
     void (async () => {
       try {
         const { data } = await api.get(`/customers/${customerId}/sale-hints`);
-        const hints = data.data as CustomerSaleHints | null;
+        const hints = recordFromResponse<CustomerSaleHints>({ data });
         if (!active || !hints) return;
 
         setSaleHints(hints);
@@ -681,7 +683,8 @@ export default function NewLeasePage() {
     setGuarantorSubmitting(true);
     try {
       const { data } = await api.post(`/customers/${customerId}/guarantors`, guarantorPayload(modalGuarantor));
-      const created = data.data as GuarantorRow;
+      const created = recordFromResponse<GuarantorRow>({ data });
+      if (!created) return;
       setGuarantors((prev) => [created, ...prev]);
       setGuarantor(guarantorFromApi(created));
       setModalGuarantor(emptyGuarantorForm());
@@ -751,7 +754,11 @@ export default function NewLeasePage() {
 
     try {
       const { data } = await api.post('/leases', payload);
-      const created = data.data as SuccessResult;
+      const created = recordFromResponse<SuccessResult>({ data });
+      if (!created?.id) {
+        notify.fail('فروخت', null, 'فروخت محفوظ نہیں ہو سکی');
+        return;
+      }
       clearOfflineDraft('lease-new');
       setSuccess({
         id: created.id,

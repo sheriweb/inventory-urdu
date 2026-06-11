@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Banknote, RefreshCw, Wallet, ListChecks, Receipt, Bell } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -142,7 +143,7 @@ function RecoveryHubContent() {
     (async () => {
       try {
         const { data } = await api.get('/staff');
-        setRecoveryMen((data.data as Staff[]).filter((s) => s.type === StaffType.RECOVERY_MAN));
+        setRecoveryMen(asArray<Staff>(data?.data).filter((s) => s.type === StaffType.RECOVERY_MAN));
       } catch {
         /* ignore */
       }
@@ -156,13 +157,13 @@ function RecoveryHubContent() {
       const params: Record<string, string> = { date: debouncedDate };
       if (debouncedRecoveryManId) params.recoveryManId = debouncedRecoveryManId;
       const { data } = await api.get('/recovery/list', { params });
-      const payload = data.data as { rows?: RecoveryListRow[]; summary?: RecoveryListSummary } | RecoveryListRow[];
+      const payload = data?.data as { rows?: RecoveryListRow[]; summary?: RecoveryListSummary } | RecoveryListRow[] | undefined;
       if (Array.isArray(payload)) {
         setListRows(payload);
         setListSummary(null);
       } else {
-        setListRows(payload.rows ?? []);
-        setListSummary(payload.summary ?? null);
+        setListRows(asArray<RecoveryListRow>(payload?.rows));
+        setListSummary(payload?.summary ?? null);
       }
     } catch {
       setError('ریکوری لسٹ لوڈ نہیں ہو سکی');
@@ -179,7 +180,7 @@ function RecoveryHubContent() {
     try {
       const params: Record<string, string> = { from: debouncedFrom, to: debouncedTo };
       const { data } = await api.get('/recovery/payments', { params });
-      setPaymentRows(data.data as PaymentRow[]);
+      setPaymentRows(asArray<PaymentRow>(data?.data));
     } catch {
       setError('ادائیگیاں لوڈ نہیں ہو سکیں');
       setPaymentRows([]);

@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { List } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse, recordFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -173,9 +174,16 @@ export function CustomerFormPage({
         api.get(`/customers/${editId}`),
         api.get('/areas'),
       ]);
-      const customer = customerRes.data.data as { guarantors?: Parameters<typeof guarantorFromApi>[0][] };
-      setForm(customerToForm(customerRes.data.data));
-        setAreas(Array.isArray(areasRes.data?.data) ? (areasRes.data.data as Area[]) : []);
+      type CustomerEditRecord = Parameters<typeof customerToForm>[0] & {
+        guarantors?: Parameters<typeof guarantorFromApi>[0][];
+      };
+      const customer = recordFromResponse<CustomerEditRecord>(customerRes);
+      if (!customer) {
+        setError('گاہک لوڈ نہیں ہو سکا');
+        return;
+      }
+      setForm(customerToForm(customer));
+      setAreas(listFromResponse<Area>(areasRes).rows);
       const rows = Array.isArray(customer.guarantors) ? customer.guarantors : [];
       setGuarantorRows(rows);
       setGuarantor(rows[0] ? guarantorFromApi(rows[0]) : emptyGuarantorForm());
@@ -236,10 +244,10 @@ export function CustomerFormPage({
           requests.push(api.get('/items'), api.get('/staff'));
         }
         const results = await Promise.all(requests);
-        setAreas(Array.isArray(results[0].data?.data) ? (results[0].data.data as Area[]) : []);
+        setAreas(listFromResponse<Area>(results[0]).rows);
         if (mode === 'create' && results[1] && results[2]) {
-          setCatalog(Array.isArray(results[1].data?.data) ? (results[1].data.data as Item[]) : []);
-          setStaff(Array.isArray(results[2].data?.data) ? (results[2].data.data as Staff[]) : []);
+          setCatalog(listFromResponse<Item>(results[1]).rows);
+          setStaff(listFromResponse<Staff>(results[2]).rows);
           const lastStaff = loadLastUsedStaff();
           if (lastStaff) {
             if (lastStaff.salesmanId) setSalesmanId(lastStaff.salesmanId);
@@ -274,7 +282,7 @@ export function CustomerFormPage({
       return;
     }
     const { data } = await api.post(`/customers/${customerId}/guarantors`, payload);
-    const created = data.data as { id?: string };
+    const created = recordFromResponse<{ id?: string }>({ data });
     if (created?.id) {
       setGuarantor((prev) => ({ ...prev, id: created.id! }));
     }
@@ -315,7 +323,7 @@ export function CustomerFormPage({
         let customer: unknown;
         if (mode === 'edit' && editId) {
           const { data } = await api.patch(`/customers/${editId}`, customerPayload(form));
-          customer = data.data;
+          customer = recordFromResponse({ data }) ?? data?.data;
           try {
             await saveGuarantorForCustomer(editId);
           } catch {
@@ -324,7 +332,7 @@ export function CustomerFormPage({
           notify.updated('گاہک');
         } else {
           const { data } = await api.post('/customers', customerPayload(form));
-          customer = data.data;
+          customer = recordFromResponse({ data }) ?? data?.data;
           const createdId = (customer as { id?: string })?.id;
           if (createdId) {
             try {

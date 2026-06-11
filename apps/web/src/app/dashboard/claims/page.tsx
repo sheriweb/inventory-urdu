@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,7 +69,7 @@ export default function ClaimsPage() {
       const params: Record<string, string> = {};
       if (typeFilter) params.type = typeFilter;
       const { data } = await api.get('/claims', { params });
-      setRows(data.data as ClaimRow[]);
+      setRows(asArray<ClaimRow>(data?.data));
     } catch {
       setError('کلیم ریکارڈ لوڈ نہیں ہو سکا');
     } finally {
@@ -84,10 +85,10 @@ export default function ClaimsPage() {
         api.get('/staff'),
         api.get('/customers'),
       ]);
-      const itemList = (itemsRes.data.data as ItemRow[]).filter((i) => i.isActive);
+      const itemList = listFromResponse<ItemRow>(itemsRes).rows.filter((i) => i.isActive);
       setItems(itemList);
-      setStaff((staffRes.data.data as Staff[]).filter((s) => s.isActive));
-      setCustomers(customersRes.data.data as CustomerRow[]);
+      setStaff(listFromResponse<Staff>(staffRes).rows.filter((s) => s.isActive));
+      setCustomers(listFromResponse<CustomerRow>(customersRes).rows);
       setClaimForm((prev) => ({
         ...prev,
         itemId: prev.itemId || itemList[0]?.id || '',

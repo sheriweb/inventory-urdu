@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Undo2 } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,7 +76,7 @@ export default function LoadMgmtHubPage() {
     setError('');
     try {
       const { data } = await api.get('/loading/inventory', { params: sid ? { staffId: sid } : {} });
-      setRows(data.data as InventoryRow[]);
+      setRows(asArray<InventoryRow>(data?.data));
     } catch {
       setError('اسٹاک لوڈ نہیں ہو سکا');
     } finally {
@@ -87,7 +88,9 @@ export default function LoadMgmtHubPage() {
     (async () => {
       try {
         const { data } = await api.get('/staff');
-        setSalesmen((data.data as Staff[]).filter((s) => s.isActive && s.type === StaffType.SALESMAN));
+        setSalesmen(
+          asArray<Staff>(data?.data).filter((s) => s.isActive && s.type === StaffType.SALESMAN),
+        );
       } catch {
         /* ignore */
       }
@@ -103,8 +106,10 @@ export default function LoadMgmtHubPage() {
     setFormLoading(true);
     try {
       const [itemsRes, staffRes] = await Promise.all([api.get('/items'), api.get('/staff')]);
-      const itemList = (itemsRes.data.data as ItemRow[]).filter((i) => i.isActive);
-      const staffList = (staffRes.data.data as Staff[]).filter((s) => s.isActive && s.type === StaffType.SALESMAN);
+      const itemList = listFromResponse<ItemRow>(itemsRes).rows.filter((i) => i.isActive);
+      const staffList = listFromResponse<Staff>(staffRes).rows.filter(
+        (s) => s.isActive && s.type === StaffType.SALESMAN,
+      );
       setItems(itemList);
       setSalesmen(staffList);
       setLoadItemId(itemList[0]?.id ?? '');
@@ -125,7 +130,7 @@ export default function LoadMgmtHubPage() {
       return;
     }
     const { data } = await api.get('/loading/inventory', { params: { staffId: sid } });
-    const list = data.data as UnloadInventoryRow[];
+    const list = asArray<UnloadInventoryRow>(data?.data);
     setUnloadInventory(list);
     setUnloadItemId(list[0]?.itemId ?? '');
   }

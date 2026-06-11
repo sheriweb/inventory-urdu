@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Printer, Search } from 'lucide-react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { asArray } from '@/lib/api-response';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -44,8 +45,7 @@ export function ReportFilters({
       setLoadingStaff(true);
       try {
         const { data } = await api.get('/staff');
-        const all = data.data as Staff[];
-        setRecoveryMen(all.filter((s) => s.type === StaffType.RECOVERY_MAN));
+        setRecoveryMen(asArray<Staff>(data?.data).filter((s) => s.type === StaffType.RECOVERY_MAN));
       } catch {
         setRecoveryMen([]);
       } finally {

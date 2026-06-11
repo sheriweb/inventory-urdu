@@ -1,10 +1,16 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { comparePassword, hashPassword } from '../../common/utils';
 import { MESSAGES } from '../../common/constants';
-import { LoginDto } from './dto';
+import { LoginDto, RefreshTokenDto, UpdateAccountDto } from './dto';
 import { IAuthResponse, IAuthTokens, IJwtPayload } from './interfaces/auth.interface';
 
 @Injectable()
@@ -117,6 +123,59 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException(MESSAGES.UNAUTHORIZED);
     return user;
+  }
+
+  async updateAccount(userId: string, dto: UpdateAccountDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException(MESSAGES.UNAUTHORIZED);
+
+    const nextName = dto.name?.trim();
+    const nextEmail = dto.email?.trim().toLowerCase();
+    const nextPassword = dto.newPassword?.trim();
+
+    if (!nextName && !nextEmail && !nextPassword) {
+      throw new BadRequestException('کوئی تبدیلی نہیں');
+    }
+
+    if ((nextEmail && nextEmail !== user.email) || nextPassword) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException('موجودہ پاس ورڈ درج کریں');
+      }
+      const valid = await comparePassword(dto.currentPassword, user.password);
+      if (!valid) throw new UnauthorizedException('موجودہ پاس ورڈ غلط ہے');
+    }
+
+    const data: { name?: string; email?: string; password?: string; refreshToken?: null } = {};
+    if (nextName) data.name = nextName;
+    if (nextEmail && nextEmail !== user.email) {
+      const taken = await this.prisma.user.findUnique({ where: { email: nextEmail } });
+      if (taken && taken.id !== userId) {
+        throw new ConflictException('یہ ای میل پہلے سے استعمال میں ہے');
+      }
+      data.email = nextEmail;
+    }
+    if (nextPassword) {
+      data.password = await hashPassword(nextPassword);
+      data.refreshToken = null;
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        shopId: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+    });
+
+    this.logger.log(`Account updated: ${updated.email}`);
+    return updated;
   }
 
   private async generateTokens(payload: IJwtPayload): Promise<IAuthTokens> {

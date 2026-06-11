@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CalendarClock } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray } from '@/lib/api-response';
 import { Badge } from '@/components/ui/badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { SegmentTabs, TabPanel } from '@/components/ui/segment-tabs';
@@ -80,7 +81,7 @@ export default function InstallmentsHubPage() {
     setError('');
     try {
       const { data } = await api.get('/installments/short');
-      setRows(data.data as ShortRow[]);
+      setRows(asArray<ShortRow>(data?.data));
     } catch {
       setError('شارٹ لسٹ لوڈ نہیں ہو سکی');
     } finally {

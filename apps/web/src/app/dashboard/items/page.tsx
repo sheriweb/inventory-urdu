@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
+import { listFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,10 +57,10 @@ export default function ItemsPage() {
         api.get('/items', { params: { page, limit: 12, q: debouncedQ.trim() || undefined } }),
         api.get('/companies'),
       ]);
-      const rows = Array.isArray(itemsRes.data?.data) ? (itemsRes.data.data as ItemRow[]) : [];
+      const { rows, total } = listFromResponse<ItemRow>(itemsRes);
       setItems(rows);
-      setTotalItems(itemsRes.data?.meta?.total ?? rows.length);
-      setCompanies(Array.isArray(companiesRes.data?.data) ? (companiesRes.data.data as Company[]) : []);
+      setTotalItems(total);
+      setCompanies(listFromResponse<Company>(companiesRes).rows);
     } catch {
       setError('ڈیٹا لوڈ نہیں ہو سکا');
     } finally {

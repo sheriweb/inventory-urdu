@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Mail, MapPin, Palette, Phone, Save, Store, Bell } from 'lucide-react';
+import { Mail, MapPin, Palette, Phone, Save, Store, Bell, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
 import { notify, getApiErrorMessage } from '@/lib/notify';
 import { loadShopProfile } from '@/lib/shop-profile';
@@ -34,7 +34,7 @@ type ShopForm = {
   autoRoznamchaOnCollection: boolean;
 };
 
-type SettingsTab = 'branding' | 'basic' | 'contact' | 'address' | 'reminders';
+type SettingsTab = 'branding' | 'basic' | 'contact' | 'address' | 'reminders' | 'account';
 
 const SETTINGS_TABS = [
   { id: 'branding', label: 'برانڈنگ', icon: Palette, description: 'لوگو اور تھیم کا رنگ' },
@@ -42,6 +42,7 @@ const SETTINGS_TABS = [
   { id: 'contact', label: 'رابطہ', icon: Phone, description: 'فون، موبائل اور ای میل' },
   { id: 'address', label: 'پتہ', icon: MapPin, description: 'شہر اور مکمل پتہ' },
   { id: 'reminders', label: 'یاد دہانیاں', icon: Bell, description: 'قسط SMS / واٹس ایپ' },
+  { id: 'account', label: 'لاگ ان', icon: KeyRound, description: 'ای میل اور پاس ورڈ' },
 ] as const;
 
 const TAB_HINTS: Record<SettingsTab, string> = {
@@ -50,6 +51,7 @@ const TAB_HINTS: Record<SettingsTab, string> = {
   contact: 'فون اور ای میل رابطے کے لیے',
   address: 'پتہ رسیدوں پر شامل ہو سکتا ہے',
   reminders: '2 دن پہلے خودکار فہرست — واٹس ایپ/SMS ایک کلک',
+  account: 'لاگ ان ای میل اور پاس ورڈ تبدیل کریں',
 };
 
 const emptyShop: ShopForm = {
@@ -66,6 +68,22 @@ const emptyShop: ShopForm = {
   reminderDaysBefore: 2,
   reminderMessageTemplate: DEFAULT_REMINDER_TEMPLATE,
   autoRoznamchaOnCollection: true,
+};
+
+type AccountForm = {
+  name: string;
+  email: string;
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+const emptyAccount: AccountForm = {
+  name: '',
+  email: '',
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
 };
 
 const inputClass = 'rounded-xl border-slate-200 bg-white shadow-sm transition focus-visible:ring-[var(--shop-brand)]/30';
@@ -100,9 +118,11 @@ function FieldCard({ children, className }: { children: React.ReactNode; classNa
 
 export default function ShopSettingsPage() {
   const [form, setForm] = useState<ShopForm>(emptyShop);
+  const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccount);
   const [tab, setTab] = useState<SettingsTab>('branding');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [accountSubmitting, setAccountSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [apiStale, setApiStale] = useState(false);
 
@@ -118,10 +138,19 @@ export default function ShopSettingsPage() {
     setError('');
     setApiStale(false);
     try {
-      const { shop, source } = await loadShopProfile();
-      setForm(shopToForm(shop));
-      applyShopBranding(shop.brandColor);
-      if (source === 'me') setApiStale(true);
+      const [profileResult, me] = await Promise.all([loadShopProfile(), fetchMe(true)]);
+      setForm(shopToForm(profileResult.shop));
+      applyShopBranding(profileResult.shop.brandColor);
+      if (profileResult.source === 'me') setApiStale(true);
+      if (me) {
+        setAccountForm({
+          name: me.name ?? '',
+          email: me.email ?? '',
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        });
+      }
     } catch (err) {
       setError(getApiErrorMessage(err, 'دکان کی معلومات لوڈ نہیں ہو سکیں — API دوبارہ شروع کریں'));
     } finally {
@@ -171,6 +200,61 @@ export default function ShopSettingsPage() {
     }
   }
 
+  async function onSaveAccount(e: React.FormEvent) {
+    e.preventDefault();
+    const wantsEmail = accountForm.email.trim().toLowerCase();
+    const wantsPassword = accountForm.newPassword.trim().length > 0;
+    const wantsName = accountForm.name.trim().length > 0;
+
+    if (!wantsName && !wantsEmail && !wantsPassword) {
+      notify.error('کوئی تبدیلی نہیں');
+      return;
+    }
+    if (wantsPassword) {
+      if (accountForm.newPassword.length < 6) {
+        notify.error('نیا پاس ورڈ کم از کم 6 حروف کا ہو');
+        return;
+      }
+      if (accountForm.newPassword !== accountForm.confirmPassword) {
+        notify.error('پاس ورڈ مماثل نہیں');
+        return;
+      }
+      if (!accountForm.currentPassword) {
+        notify.error('موجودہ پاس ورڈ درج کریں');
+        return;
+      }
+    }
+    if (wantsEmail && !accountForm.currentPassword) {
+      notify.error('ای میل تبدیل کرنے کے لیے موجودہ پاس ورڈ درج کریں');
+      return;
+    }
+
+    setAccountSubmitting(true);
+    setError('');
+    try {
+      await api.patch('/auth/account', {
+        name: wantsName ? accountForm.name.trim() : undefined,
+        email: wantsEmail ? accountForm.email.trim() : undefined,
+        currentPassword: accountForm.currentPassword || undefined,
+        newPassword: wantsPassword ? accountForm.newPassword : undefined,
+      });
+      clearAuthCache();
+      await fetchMe(true);
+      setAccountForm((prev) => ({
+        ...prev,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      }));
+      notify.updated('لاگ ان اکاؤنٹ', 'ای میل / پاس ورڈ محفوظ ہو گیا');
+    } catch (err) {
+      notify.fail('محفوظ', err, 'اکاؤنٹ اپڈیٹ نہیں ہو سکا');
+      setError(getApiErrorMessage(err, 'اکاؤنٹ اپڈیٹ نہیں ہو سکا'));
+    } finally {
+      setAccountSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[20rem] flex-col items-center justify-center gap-4">
@@ -191,7 +275,7 @@ export default function ShopSettingsPage() {
       ) : null}
 
       <form
-        onSubmit={onSave}
+        onSubmit={tab === 'account' ? onSaveAccount : onSave}
         className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)] ring-1 ring-slate-100"
       >
         <div className="bg-gradient-to-b from-white to-slate-50/40 px-2 pt-2 sm:px-4 sm:pt-3">
@@ -369,6 +453,70 @@ export default function ShopSettingsPage() {
               </FieldCard>
             </TabPanel>
           ) : null}
+
+          {tab === 'account' ? (
+            <TabPanel title="لاگ ان اکاؤنٹ" description="ای میل اور پاس ورڈ تبدیل کریں" icon={KeyRound}>
+              <FieldCard className="mx-auto max-w-xl space-y-5">
+                <p className="text-xs leading-relaxed text-slate-600">
+                  یہ آپ کا لاگ ان ای میل ہے — دکان کے رابطے والی ای میل سے الگ ہے۔
+                </p>
+                <FormField label="نام">
+                  <Input
+                    value={accountForm.name}
+                    onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })}
+                    className={inputClass}
+                    placeholder="آپ کا نام"
+                  />
+                </FormField>
+                <FormField label="لاگ ان ای میل">
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={accountForm.email}
+                      onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })}
+                      dir="ltr"
+                      className={`${inputClass} pl-3 pr-10 text-left`}
+                      type="email"
+                      required
+                      placeholder="you@example.com"
+                    />
+                  </div>
+                </FormField>
+                <FormField label="موجودہ پاس ورڈ">
+                  <Input
+                    value={accountForm.currentPassword}
+                    onChange={(e) => setAccountForm({ ...accountForm, currentPassword: e.target.value })}
+                    dir="ltr"
+                    className={`${inputClass} text-left`}
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="ای میل یا پاس ورڈ بدلنے کے لیے"
+                  />
+                </FormField>
+                <FormField label="نیا پاس ورڈ (اختیاری)">
+                  <Input
+                    value={accountForm.newPassword}
+                    onChange={(e) => setAccountForm({ ...accountForm, newPassword: e.target.value })}
+                    dir="ltr"
+                    className={`${inputClass} text-left`}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="کم از کم 6 حروف"
+                  />
+                </FormField>
+                <FormField label="نیا پاس ورڈ دوبارہ">
+                  <Input
+                    value={accountForm.confirmPassword}
+                    onChange={(e) => setAccountForm({ ...accountForm, confirmPassword: e.target.value })}
+                    dir="ltr"
+                    className={`${inputClass} text-left`}
+                    type="password"
+                    autoComplete="new-password"
+                  />
+                </FormField>
+              </FieldCard>
+            </TabPanel>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-gradient-to-l from-slate-50 to-white px-4 py-4 sm:px-8">
@@ -380,9 +528,19 @@ export default function ShopSettingsPage() {
             </span>
             <span>{TAB_HINTS[tab]}</span>
           </div>
-          <Button type="submit" disabled={submitting} className="min-w-[10rem] gap-1.5 shadow-md">
+          <Button
+            type="submit"
+            disabled={tab === 'account' ? accountSubmitting : submitting}
+            className="min-w-[10rem] gap-1.5 shadow-md"
+          >
             <Save className="h-4 w-4" />
-            {submitting ? 'محفوظ…' : 'ترتیبات محفوظ کریں'}
+            {tab === 'account'
+              ? accountSubmitting
+                ? 'محفوظ…'
+                : 'اکاؤنٹ محفوظ کریں'
+              : submitting
+                ? 'محفوظ…'
+                : 'ترتیبات محفوظ کریں'}
           </Button>
         </div>
       </form>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,8 +44,8 @@ export default function StaffPage() {
     setError('');
     try {
       const [staffRes, areasRes] = await Promise.all([api.get('/staff'), api.get('/areas')]);
-      setStaff(staffRes.data.data as StaffRow[]);
-      setAreas(areasRes.data.data as Area[]);
+      setStaff(listFromResponse<StaffRow>(staffRes).rows);
+      setAreas(listFromResponse<Area>(areasRes).rows);
     } catch {
       setError('ڈیٹا لوڈ نہیں ہو سکا');
     } finally {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray } from '@/lib/api-response';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -85,7 +86,7 @@ export function SalesReportFilters({
       setLoadingStaff(true);
       try {
         const { data } = await api.get('/staff');
-        setStaff(Array.isArray(data.data) ? (data.data as Staff[]) : []);
+        setStaff(asArray<Staff>(data?.data));
       } catch {
         setStaff([]);
       } finally {

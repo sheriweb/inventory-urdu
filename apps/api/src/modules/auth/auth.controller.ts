@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { UserRole } from '@inventory-urdu/shared';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto } from './dto';
+import { LoginDto, RefreshTokenDto, UpdateAccountDto } from './dto';
 import { Auth, CurrentUser, Public } from '../../common/decorators';
 import { MESSAGES } from '../../common/constants';
 
@@ -39,5 +40,12 @@ export class AuthController {
   async getMe(@CurrentUser('id') userId: string) {
     const user = await this.authService.getMe(userId);
     return { message: MESSAGES.FETCHED('Profile'), data: user };
+  }
+
+  @Auth(UserRole.SHOP_OWNER, UserRole.OPERATOR)
+  @Patch('account')
+  async updateAccount(@CurrentUser('id') userId: string, @Body() dto: UpdateAccountDto) {
+    const user = await this.authService.updateAccount(userId, dto);
+    return { message: MESSAGES.UPDATED('Account'), data: user };
   }
 }

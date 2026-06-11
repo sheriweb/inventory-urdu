@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FilePlus } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse } from '@/lib/api-response';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageToolbar } from '@/components/layout/page-toolbar';
@@ -60,8 +61,9 @@ export default function AccountsPage() {
     (async () => {
       try {
         const { data } = await api.get('/staff');
-        const all = data.data as Staff[];
-        setRecoveryMen(all.filter((s) => s.type === StaffType.RECOVERY_MAN));
+        setRecoveryMen(
+          asArray<Staff>(data?.data).filter((s) => s.type === StaffType.RECOVERY_MAN),
+        );
       } catch {
         /* ignore */
       }
@@ -82,9 +84,9 @@ export default function AccountsPage() {
       if (from) params.from = from;
       if (to) params.to = to;
       const { data } = await api.get('/leases', { params });
-      const rows = Array.isArray(data?.data) ? (data.data as AccountRow[]) : [];
+      const { rows, total } = listFromResponse<AccountRow>({ data });
       setRows(rows);
-      setTotalItems(data?.meta?.total ?? rows.length);
+      setTotalItems(total);
     } catch {
       setError('کھاتے لوڈ نہیں ہو سکے');
       setRows([]);

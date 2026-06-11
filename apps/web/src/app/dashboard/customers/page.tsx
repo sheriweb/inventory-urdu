@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
+import { asArray, listFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { PageToolbar } from '@/components/layout/page-toolbar';
@@ -78,9 +79,9 @@ export default function CustomersPage() {
       const customersRes = await api.get('/customers', {
         params: { page, limit: 10, q: debouncedQ.trim() || undefined },
       });
-      const rows = Array.isArray(customersRes.data?.data) ? (customersRes.data.data as CustomerRow[]) : [];
+      const { rows, total } = listFromResponse<CustomerRow>(customersRes);
       setCustomers(rows);
-      setTotalItems(customersRes.data?.meta?.total ?? rows.length);
+      setTotalItems(total);
     } catch {
       setError('گاہک لوڈ نہیں ہو سکے');
     } finally {
@@ -99,7 +100,7 @@ export default function CustomersPage() {
   async function loadGuarantors(customerId: string) {
     try {
       const { data } = await api.get(`/customers/${customerId}/guarantors`);
-      setGuarantors(data.data as Guarantor[]);
+      setGuarantors(asArray<Guarantor>(data?.data));
     } catch {
       const row = customers.find((c) => c.id === customerId);
       setGuarantors(row?.guarantors ?? []);
