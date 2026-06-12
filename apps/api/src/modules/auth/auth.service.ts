@@ -117,6 +117,7 @@ export class AuthService {
             city: true,
             description: true,
             brandColor: true,
+            romanUrduEnabled: true,
           },
         },
       },

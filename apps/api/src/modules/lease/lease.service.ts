@@ -67,7 +67,23 @@ function serializeUnitDetails(
 const staffSelect = { id: true, name: true, type: true, mobile: true };
 
 const leaseInclude = {
-  customer: { select: { id: true, name: true, mobile: true, cnic: true } },
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      fatherOrHusbandName: true,
+      mobile: true,
+      additionalMobiles: true,
+      cnic: true,
+      caste: true,
+      profession: true,
+      city: true,
+      presentAddress: true,
+      bankName: true,
+      chequeNumber: true,
+      area: { select: { name: true, city: true } },
+    },
+  },
   salesman: { select: staffSelect },
   recoveryMan: { select: staffSelect },
   outdoorMan: { select: staffSelect },

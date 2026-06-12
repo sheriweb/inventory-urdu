@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { romanToUrdu } from '@/lib/roman-to-urdu';
+import { useRomanUrduEnabled } from '@/lib/roman-urdu-settings';
 
 type RomanUrduTextareaProps = {
   value: string;
@@ -23,8 +24,10 @@ export function RomanUrduTextarea({
   rows = 3,
   placeholder,
   disabled,
-  showRomanHelper = true,
+  showRomanHelper,
 }: RomanUrduTextareaProps) {
+  const shopRomanUrdu = useRomanUrduEnabled();
+  const showHelper = showRomanHelper !== undefined ? showRomanHelper : shopRomanUrdu;
   const [roman, setRoman] = React.useState('');
   const preview = React.useMemo(() => romanToUrdu(roman), [roman]);
 
@@ -44,7 +47,7 @@ export function RomanUrduTextarea({
         placeholder={placeholder}
         className={cn('font-urdu text-base leading-7', className)}
       />
-      {showRomanHelper ? (
+      {showHelper ? (
         <div className="rounded-lg border border-dashed border-emerald-200/80 bg-emerald-50/40 p-2.5">
           <p className="mb-1.5 text-xs text-slate-500">انگریزی / رومن لکھیں → اردو (مفت)</p>
           <div className="flex flex-wrap gap-2">

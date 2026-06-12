@@ -63,4 +63,8 @@ export class UpdateShopProfileDto {
   @IsOptional()
   @IsBoolean()
   autoRoznamchaOnCollection?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  romanUrduEnabled?: boolean;
 }

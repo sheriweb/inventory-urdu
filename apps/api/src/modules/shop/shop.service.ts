@@ -30,6 +30,7 @@ const shopProfileSelect = {
   reminderDaysBefore: true,
   reminderMessageTemplate: true,
   autoRoznamchaOnCollection: true,
+  romanUrduEnabled: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -549,6 +550,7 @@ export class ShopService {
             ? null
             : dto.reminderMessageTemplate?.trim() || undefined,
         autoRoznamchaOnCollection: dto.autoRoznamchaOnCollection,
+        romanUrduEnabled: dto.romanUrduEnabled,
       },
       select: shopProfileSelect,
     });

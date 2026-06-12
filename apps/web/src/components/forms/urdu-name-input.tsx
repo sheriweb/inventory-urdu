@@ -8,6 +8,7 @@ import { romanToUrdu } from '@/lib/roman-to-urdu';
 import { VoiceInputButton } from '@/components/forms/voice-input-button';
 import { useSpeechInput } from '@/hooks/use-speech-input';
 import { notify } from '@/lib/notify';
+import { useRomanUrduEnabled } from '@/lib/roman-urdu-settings';
 
 type UrduNameInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: string;
@@ -19,12 +20,14 @@ type UrduNameInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'val
 export function UrduNameInput({
   value,
   onChange,
-  showRomanHelper = true,
+  showRomanHelper,
   showVoice = true,
   className,
   disabled,
   ...props
 }: UrduNameInputProps) {
+  const shopRomanUrdu = useRomanUrduEnabled();
+  const showHelper = showRomanHelper !== undefined ? showRomanHelper : shopRomanUrdu;
   const [roman, setRoman] = React.useState('');
   const preview = React.useMemo(() => romanToUrdu(roman), [roman]);
   const compact = Boolean(className?.includes('h-8'));
@@ -63,7 +66,7 @@ export function UrduNameInput({
           />
         ) : null}
       </div>
-      {showRomanHelper ? (
+      {showHelper ? (
         <div className="rounded-lg border border-dashed border-emerald-200/80 bg-emerald-50/40 p-2.5">
           <p className="mb-1.5 text-xs text-slate-500">رومن سے اردو (مفت — انٹرنیٹ نہیں چاہیے)</p>
           <div className="flex flex-wrap gap-2">

@@ -7,6 +7,7 @@ import { notify, getApiErrorMessage } from '@/lib/notify';
 import { loadShopProfile } from '@/lib/shop-profile';
 import { applyShopBranding, normalizeBrandColor } from '@/lib/shop-branding';
 import { clearAuthCache, fetchMe } from '@/lib/auth';
+import { notifyShopSettingsUpdated } from '@/lib/roman-urdu-settings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-section';
@@ -32,6 +33,7 @@ type ShopForm = {
   reminderDaysBefore: number;
   reminderMessageTemplate: string;
   autoRoznamchaOnCollection: boolean;
+  romanUrduEnabled: boolean;
 };
 
 type SettingsTab = 'branding' | 'basic' | 'contact' | 'address' | 'reminders' | 'account';
@@ -68,6 +70,7 @@ const emptyShop: ShopForm = {
   reminderDaysBefore: 2,
   reminderMessageTemplate: DEFAULT_REMINDER_TEMPLATE,
   autoRoznamchaOnCollection: true,
+  romanUrduEnabled: false,
 };
 
 type AccountForm = {
@@ -105,6 +108,7 @@ function shopToForm(shop: ShopProfile): ShopForm {
     reminderDaysBefore: shop.reminderDaysBefore ?? 2,
     reminderMessageTemplate: shop.reminderMessageTemplate?.trim() || DEFAULT_REMINDER_TEMPLATE,
     autoRoznamchaOnCollection: shop.autoRoznamchaOnCollection ?? true,
+    romanUrduEnabled: shop.romanUrduEnabled ?? false,
   };
 }
 
@@ -186,10 +190,12 @@ export default function ShopSettingsPage() {
         reminderDaysBefore: form.reminderDaysBefore,
         reminderMessageTemplate: form.reminderMessageTemplate.trim() || undefined,
         autoRoznamchaOnCollection: form.autoRoznamchaOnCollection,
+        romanUrduEnabled: form.romanUrduEnabled,
       });
       clearAuthCache();
       const me = await fetchMe(true);
       applyShopBranding(me?.shop?.brandColor ?? form.brandColor);
+      notifyShopSettingsUpdated();
       setApiStale(false);
       notify.updated('دکان کی ترتیبات', 'برانڈنگ اور معلومات محفوظ ہو گئیں');
     } catch (err) {
@@ -328,6 +334,20 @@ export default function ShopSettingsPage() {
                     placeholder="دکان کے بارے میں مختصر تفصیل"
                   />
                 </FormField>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                  <input
+                    type="checkbox"
+                    checked={form.romanUrduEnabled}
+                    onChange={(e) => setForm({ ...form, romanUrduEnabled: e.target.checked })}
+                    className="mt-1 h-4 w-4 accent-emerald-600"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-slate-900">رومن سے اردو (تمام فارمز)</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-slate-600">
+                      فعال ہونے پر نام، پتہ اور دیگر اردو فیلڈز کے نیچے رومن اردو مدد ظاہر ہوگی۔ بند ہونے پر ڈیفالٹ چھپا رہے گا۔
+                    </span>
+                  </span>
+                </label>
               </FieldCard>
             </TabPanel>
           ) : null}

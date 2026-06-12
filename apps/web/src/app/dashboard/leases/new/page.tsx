@@ -818,6 +818,13 @@ export default function NewLeasePage() {
               <Button type="button" onClick={resetForm}>
                 نیا کھاتہ بنائیں
               </Button>
+              <Link
+                href={`/dashboard/print/khata/${success.id}?auto=1`}
+                target="_blank"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700"
+              >
+                پرنٹ کھاتہ
+              </Link>
               <Link href={`/dashboard/leases/${success.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">تفصیل دیکھیں</Link>
               <Link href="/dashboard/leases" className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">تمام کھاتے</Link>
             </div>
@@ -917,7 +924,7 @@ export default function NewLeasePage() {
                   <CustomerSearchCombobox
                     value={customerId}
                     onChange={setCustomerId}
-                    onCustomerAdded={(customer) => rememberCustomer(customer)}
+                    onCustomerSelected={(customer) => rememberCustomer(customer)}
                     required
                   />
                 </FormField>

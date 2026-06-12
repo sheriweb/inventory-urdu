@@ -1,9 +1,11 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { PackagePlus, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { QuickAddModal } from '@/components/forms/quick-add-modal';
 import { QuickAddSelect } from '@/components/forms/quick-add-select';
 import { UrduNameInput } from '@/components/forms/urdu-name-input';
 import { compactInputClass } from '@/components/forms/customer-form-fields';
@@ -40,6 +42,7 @@ export function SaleItemsCompactTable({
 }: SaleItemsCompactTableProps) {
   const lines = linesProp ?? [];
   const catalog = catalogProp ?? [];
+  const [itemModalOpen, setItemModalOpen] = useState(false);
 
   function emitChange(next: SaleItemLine[]) {
     onChange(Array.isArray(next) ? next : []);
@@ -233,10 +236,36 @@ export function SaleItemsCompactTable({
           </tfoot>
         </table>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={addRow} className="gap-1.5">
-        <Plus className="h-4 w-4" />
-        آئٹم شامل کریں
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={addRow} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          آئٹم شامل کریں
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setItemModalOpen(true)}
+          className="gap-1.5"
+        >
+          <PackagePlus className="h-4 w-4" />
+          نیا آئٹم (کیٹلاگ)
+        </Button>
+      </div>
+
+      {itemModalOpen ? (
+        <QuickAddModal
+          open={itemModalOpen}
+          onClose={() => setItemModalOpen(false)}
+          entity="item"
+          onCreated={(record) => {
+            const item = record as Item;
+            onCatalogAdded?.(item);
+            emitChange([...lines, applyCatalogToLine(newSaleItemLine(), item, item.id)]);
+            setItemModalOpen(false);
+          }}
+        />
+      ) : null}
 
       {lines.some((line) => line.saleType !== 'general') ? (
         <div className="space-y-2 border-t border-slate-100 pt-3">

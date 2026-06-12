@@ -40,6 +40,7 @@ export interface ShopProfile {
   reminderDaysBefore?: number;
   reminderMessageTemplate?: string | null;
   autoRoznamchaOnCollection?: boolean;
+  romanUrduEnabled?: boolean;
 }
 
 export interface AuthTokens {

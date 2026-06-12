@@ -79,6 +79,7 @@ model Shop {
   reminderDaysBefore   Int      @default(2)
   reminderMessageTemplate String? @db.Text
   autoRoznamchaOnCollection Boolean @default(true)
+  romanUrduEnabled          Boolean @default(false)
   billingPlanLabel     String?
   monthlyFeePkr        Decimal?       @db.Decimal(12, 2)
   billingNotes         String?        @db.Text

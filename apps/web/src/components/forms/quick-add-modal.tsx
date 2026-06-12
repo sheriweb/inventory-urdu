@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { recordFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,7 +46,6 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
 
   const [name, setName] = useState('');
   const [fatherOrHusbandName, setFatherOrHusbandName] = useState('');
-  const [city, setCity] = useState('');
   const [mobile, setMobile] = useState('');
   const [areaId, setAreaId] = useState('');
   const [areas, setAreas] = useState<Area[]>([]);
@@ -80,7 +80,6 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
   const reset = useCallback(() => {
     setName('');
     setFatherOrHusbandName('');
-    setCity('');
     setMobile('');
     setAreaId('');
     setStaffTypeValue(staffType ?? StaffType.SALESMAN);
@@ -129,8 +128,11 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
       let record: unknown;
       switch (entity) {
         case 'area': {
-          const { data } = await api.post('/areas', { name: name.trim(), city: city.trim() || undefined });
-          record = data.data;
+          const trimmed = name.trim();
+          if (!trimmed) throw new Error('علاقے کا نام درج کریں');
+          const { data } = await api.post('/areas', { name: trimmed });
+          record = recordFromResponse<Area>({ data });
+          if (!record || !(record as Area).id) throw new Error('علاقہ محفوظ نہیں ہو سکا');
           break;
         }
         case 'company': {
@@ -218,7 +220,17 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
           {error ? <AlertBanner>{error}</AlertBanner> : null}
 
           {(entity === 'area' || entity === 'company' || entity === 'customer' || entity === 'staff' || entity === 'item' || entity === 'expense-account') && (
-            <FormField label={entity === 'company' ? 'کمپنی کا نام' : entity === 'expense-account' ? 'اکاؤنٹ نام' : 'نام'}>
+            <FormField
+              label={
+                entity === 'area'
+                  ? 'علاقہ'
+                  : entity === 'company'
+                    ? 'کمپنی کا نام'
+                    : entity === 'expense-account'
+                      ? 'اکاؤنٹ نام'
+                      : 'نام'
+              }
+            >
               {entity === 'company' || entity === 'expense-account' || entity === 'area' ? (
                 <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
               ) : (
@@ -226,12 +238,6 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
               )}
             </FormField>
           )}
-
-          {entity === 'area' ? (
-            <FormField label="شہر">
-              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="اختیاری" />
-            </FormField>
-          ) : null}
 
           {entity === 'customer' || entity === 'staff' ? (
             <>
@@ -254,7 +260,6 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
                   {areas.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name}
-                      {a.city ? ` (${a.city})` : ''}
                     </option>
                   ))}
                 </SelectWithAdd>

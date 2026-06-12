@@ -1,14 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FilePlus } from 'lucide-react';
 import api from '@/lib/api';
 import { asArray, listFromResponse } from '@/lib/api-response';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { PageToolbar } from '@/components/layout/page-toolbar';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -147,15 +143,6 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
-      <PageToolbar>
-        <Link href="/dashboard/leases/new">
-          <Button size="sm" className="gap-1.5">
-            <FilePlus className="h-4 w-4" />
-            نئی فروخت (قسط / نقد)
-          </Button>
-        </Link>
-      </PageToolbar>
-
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
           <div className="min-w-[180px] flex-1 sm:max-w-[240px]">
@@ -205,15 +192,7 @@ export default function AccountsPage() {
         page={page}
         onPageChange={setPage}
         emptyTitle="کوئی کھاتہ نہیں ملا"
-        emptyDescription="فلٹر بدل کر دوبارہ تلاش کریں یا نیا کھاتہ بنائیں"
-        emptyAction={
-          <Link href="/dashboard/leases/new">
-            <Button type="button" size="sm" className="gap-1.5">
-              <FilePlus className="h-4 w-4" />
-              نئی فروخت
-            </Button>
-          </Link>
-        }
+        emptyDescription="فلٹر بدل کر دوبارہ تلاش کریں"
         onRowClick={(row) => router.push(`/dashboard/leases/${row.id}`)}
         actions={(row) => (
           <TableRowActions

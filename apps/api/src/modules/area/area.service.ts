@@ -14,8 +14,8 @@ export class AreaService {
     return this.prisma.area.create({
       data: {
         shopId,
-        name: dto.name,
-        city: dto.city,
+        name: dto.name.trim(),
+        city: dto.city?.trim() || undefined,
       },
     });
   }
@@ -23,7 +23,7 @@ export class AreaService {
   async findAll(user: AuthUser) {
     const shopId = requireShopId(user);
     return this.prisma.area.findMany({
-      where: { shopId },
+      where: { shopId, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -40,7 +40,11 @@ export class AreaService {
     const shopId = requireShopId(user);
     return this.prisma.area.update({
       where: { id },
-      data: dto,
+      data: {
+        ...dto,
+        name: dto.name?.trim(),
+        city: dto.city === undefined ? undefined : dto.city?.trim() || null,
+      },
     });
   }
 

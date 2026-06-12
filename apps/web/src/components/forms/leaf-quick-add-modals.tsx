@@ -24,23 +24,28 @@ type AreaQuickAddModalProps = {
 
 export function AreaQuickAddModal({ open, onClose, onCreated }: AreaQuickAddModalProps) {
   const [name, setName] = useState('');
-  const [city, setCity] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const reset = useCallback(() => {
     setName('');
-    setCity('');
     setError('');
   }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('علاقے کا نام درج کریں');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
-      const { data } = await api.post('/areas', { name: name.trim(), city: city.trim() || undefined });
-      onCreated(data.data as Area);
+      const { data } = await api.post('/areas', { name: trimmed });
+      const area = recordFromResponse<Area>({ data });
+      if (!area?.id) throw new Error('علاقہ محفوظ نہیں ہو سکا');
+      onCreated(area);
       notify.created('علاقہ');
       onClose();
       reset();
@@ -75,11 +80,8 @@ export function AreaQuickAddModal({ open, onClose, onCreated }: AreaQuickAddModa
     >
       <form id="leaf-area-form" onSubmit={onSubmit} className="space-y-4">
         {error ? <AlertBanner>{error}</AlertBanner> : null}
-        <FormField label="نام">
+        <FormField label="علاقہ">
           <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-        </FormField>
-        <FormField label="شہر">
-          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="اختیاری" />
         </FormField>
       </form>
     </Modal>

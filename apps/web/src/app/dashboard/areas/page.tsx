@@ -20,14 +20,12 @@ import type { Area } from '@inventory-urdu/shared';
 export default function AreasPage() {
   const [areas, setAreas] = useState<Area[]>([]);
   const [name, setName] = useState('');
-  const [city, setCity] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editRow, setEditRow] = useState<Area | null>(null);
   const [editName, setEditName] = useState('');
-  const [editCity, setEditCity] = useState('');
   const [deleteRow, setDeleteRow] = useState<Area | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -50,21 +48,24 @@ export default function AreasPage() {
 
   function openAdd() {
     setName('');
-    setCity('');
     setAddOpen(true);
   }
 
   function openEdit(row: Area) {
     setEditRow(row);
     setEditName(row.name);
-    setEditCity(row.city ?? '');
   }
 
   async function onAdd() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      notify.error('علاقے کا نام درج کریں');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/areas', { name, city: city || undefined });
+      await api.post('/areas', { name: trimmed });
       setAddOpen(false);
       await load();
       notify.created('علاقہ');
@@ -78,10 +79,15 @@ export default function AreasPage() {
 
   async function onSaveEdit() {
     if (!editRow) return;
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      notify.error('علاقے کا نام درج کریں');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
-      await api.patch(`/areas/${editRow.id}`, { name: editName, city: editCity || undefined });
+      await api.patch(`/areas/${editRow.id}`, { name: trimmed });
       setEditRow(null);
       await load();
       notify.updated('علاقہ');
@@ -110,8 +116,7 @@ export default function AreasPage() {
   }
 
   const columns: DataTableColumn<Area>[] = [
-    { id: 'name', header: 'نام', cell: (r) => <span className="font-semibold text-slate-900">{r.name}</span> },
-    { id: 'city', header: 'شہر', cell: (r) => r.city ?? '—' },
+    { id: 'name', header: 'علاقہ', cell: (r) => <span className="font-semibold text-slate-900">{r.name}</span> },
   ];
 
   return (
@@ -130,8 +135,8 @@ export default function AreasPage() {
         columns={columns}
         rowKey={(r) => r.id}
         loading={loading}
-        searchKeys={(r) => `${r.name} ${r.city ?? ''}`}
-        searchPlaceholder="علاقہ یا شہر تلاش کریں…"
+        searchKeys={(r) => r.name}
+        searchPlaceholder="علاقہ تلاش کریں…"
         emptyTitle="کوئی علاقہ نہیں"
         emptyDescription="اوپر بٹن سے پہلا علاقہ شامل کریں"
         actions={(row) => (
@@ -150,11 +155,8 @@ export default function AreasPage() {
         formId="add-area-form"
       >
         <div className="grid gap-4">
-          <FormField label="نام">
+          <FormField label="علاقہ">
             <UrduNameInput value={name} onChange={setName} required placeholder="علاقے کا نام" autoFocus />
-          </FormField>
-          <FormField label="شہر">
-            <UrduNameInput value={city} onChange={setCity} placeholder="اختیاری" />
           </FormField>
         </div>
       </FormModal>
@@ -169,11 +171,8 @@ export default function AreasPage() {
         formId="edit-area-form"
       >
         <div className="grid gap-4">
-          <FormField label="نام">
+          <FormField label="علاقہ">
             <UrduNameInput value={editName} onChange={setEditName} required />
-          </FormField>
-          <FormField label="شہر">
-            <UrduNameInput value={editCity} onChange={setEditCity} />
           </FormField>
         </div>
       </FormModal>
