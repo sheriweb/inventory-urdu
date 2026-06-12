@@ -215,21 +215,28 @@ if (existsSync(maintenanceFlag)) {
     });
   }
 
-  if (process.env.RUN_DB_SETUP === '1' && prismaCli) {
+  if (prismaCli && apiEnv.DATABASE_URL) {
     try {
-      logLine(logPath, '[hostinger] RUN_DB_SETUP=1 — pushing schema…');
+      logLine(logPath, '[hostinger] Syncing DB schema (db push)…');
       await runOnce(node, [prismaCli, 'db', 'push', '--skip-generate'], apiDir, apiEnv);
-      if (process.env.FORCE_DB_SETUP === '1' && tsNodeCli) {
-        await runOnce(
-          node,
-          [tsNodeCli, '-r', 'tsconfig-paths/register', 'prisma/seed.ts'],
-          apiDir,
-          apiEnv,
-        );
-      }
-      logLine(logPath, '[hostinger] DB setup complete.');
+      logLine(logPath, '[hostinger] DB schema sync complete.');
     } catch (err) {
-      logLine(logPath, `[hostinger] DB setup failed (app will still start): ${err}`);
+      logLine(logPath, `[hostinger] DB schema sync failed (app will still start): ${err}`);
+    }
+  }
+
+  if (process.env.RUN_DB_SETUP === '1' && tsNodeCli) {
+    try {
+      logLine(logPath, '[hostinger] RUN_DB_SETUP=1 — seeding…');
+      await runOnce(
+        node,
+        [tsNodeCli, '-r', 'tsconfig-paths/register', 'prisma/seed.ts'],
+        apiDir,
+        apiEnv,
+      );
+      logLine(logPath, '[hostinger] DB seed complete.');
+    } catch (err) {
+      logLine(logPath, `[hostinger] DB seed failed: ${err}`);
     }
   }
 

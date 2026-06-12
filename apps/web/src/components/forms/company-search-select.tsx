@@ -32,16 +32,21 @@ export function CompanySearchSelect({
   const rootRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  const validCompanies = React.useMemo(
+    () => companies.filter((company): company is Company => Boolean(company?.id && company?.name)),
+    [companies],
+  );
+
   const selected = React.useMemo(
-    () => companies.find((company) => company.id === value) ?? null,
-    [companies, value],
+    () => validCompanies.find((company) => company.id === value) ?? null,
+    [validCompanies, value],
   );
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return companies;
-    return companies.filter((company) => company.name.toLowerCase().includes(q));
-  }, [companies, query]);
+    if (!q) return validCompanies;
+    return validCompanies.filter((company) => company.name.toLowerCase().includes(q));
+  }, [validCompanies, query]);
 
   React.useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -68,6 +73,7 @@ export function CompanySearchSelect({
   }
 
   function handleCreated(company: Company) {
+    if (!company?.id) return;
     onCompanyAdded?.(company);
     onChange(company.id);
     setAddOpen(false);

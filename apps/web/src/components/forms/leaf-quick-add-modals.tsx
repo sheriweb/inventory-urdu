@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useState } from 'react';
 import api from '@/lib/api';
+import { recordFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -107,7 +108,9 @@ export function CompanyQuickAddModal({ open, onClose, onCreated }: CompanyQuickA
     setError('');
     try {
       const { data } = await api.post('/companies', { name: name.trim() });
-      onCreated(data.data as Company);
+      const company = recordFromResponse<Company>({ data });
+      if (!company?.id) throw new Error('کمپنی محفوظ نہیں ہو سکی');
+      onCreated(company);
       notify.created('کمپنی');
       onClose();
       reset();

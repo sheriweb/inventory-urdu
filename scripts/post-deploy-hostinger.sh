@@ -25,9 +25,14 @@ if [[ -d node_modules/@prisma/engines ]]; then
   chmod +x node_modules/@prisma/engines/libquery_engine* 2>/dev/null || true
 fi
 
-if [[ "${RUN_DB_SETUP:-0}" == "1" && -n "${DATABASE_URL:-}" ]]; then
-  echo "▶ RUN_DB_SETUP=1 — prisma db push…"
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  echo "▶ Syncing DB schema (prisma db push)…"
   (cd apps/api && node ../../node_modules/prisma/build/index.js db push --skip-generate)
+fi
+
+if [[ "${RUN_DB_SETUP:-0}" == "1" && -n "${DATABASE_URL:-}" && "${FORCE_DB_SETUP:-0}" == "1" ]]; then
+  echo "▶ FORCE_DB_SETUP=1 — seeding database…"
+  npm run db:seed -w @inventory-urdu/api
 fi
 
 echo "▶ Removing deploy cruft…"

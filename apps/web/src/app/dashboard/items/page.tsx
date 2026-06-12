@@ -100,7 +100,8 @@ function ItemFormBody({
             value={form.companyId}
             onChange={(companyId) => setForm({ ...form, companyId })}
             onCompanyAdded={(company) => {
-              setCompanies((prev) => [...prev, company]);
+              if (!company?.id) return;
+              setCompanies((prev) => [...prev.filter((c) => c?.id), company]);
               setForm((f) => ({ ...f, companyId: company.id }));
             }}
             required
@@ -206,15 +207,37 @@ export default function ItemsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    const errors: string[] = [];
     try {
-      const [itemsRes, companiesRes] = await Promise.all([
+      const [itemsResult, companiesResult] = await Promise.allSettled([
         api.get('/items', { params: { page, limit: 12, q: debouncedQ.trim() || undefined } }),
         api.get('/companies'),
       ]);
-      const { rows, total } = listFromResponse<ItemRow>(itemsRes);
-      setItems(rows);
-      setTotalItems(total);
-      setCompanies(listFromResponse<Company>(companiesRes).rows);
+
+      if (itemsResult.status === 'fulfilled') {
+        const { rows, total } = listFromResponse<ItemRow>(itemsResult.value);
+        setItems(rows.filter((row): row is ItemRow => Boolean(row?.id)));
+        setTotalItems(total);
+      } else {
+        errors.push('آئٹمز لوڈ نہیں ہو سکیں');
+        setItems([]);
+        setTotalItems(0);
+      }
+
+      if (companiesResult.status === 'fulfilled') {
+        setCompanies(
+          listFromResponse<Company>(companiesResult.value).rows.filter(
+            (company): company is Company => Boolean(company?.id && company?.name),
+          ),
+        );
+      } else {
+        errors.push('کمپنیاں لوڈ نہیں ہو سکیں');
+        setCompanies([]);
+      }
+
+      if (errors.length > 0) {
+        setError(errors.join(' · '));
+      }
     } catch {
       setError('ڈیٹا لوڈ نہیں ہو سکا');
     } finally {
@@ -346,10 +369,6 @@ export default function ItemsPage() {
     [],
   );
 
-  const formBody = (
-    <ItemFormBody form={form} setForm={setForm} companies={companies} setCompanies={setCompanies} />
-  );
-
   return (
     <div className="space-y-6">
       <PageToolbar>
@@ -363,7 +382,7 @@ export default function ItemsPage() {
       <DataTable
         data={items}
         columns={columns}
-        rowKey={(r) => r.id}
+        rowKey={(r) => r?.id ?? 'row'}
         loading={loading}
         pageSize={12}
         paginationMode="server"
@@ -394,7 +413,13 @@ export default function ItemsPage() {
         submitLabel="شامل کریں"
         formId="add-item-form"
       >
-        {formBody}
+        <ItemFormBody
+          key="add-item"
+          form={form}
+          setForm={setForm}
+          companies={companies}
+          setCompanies={setCompanies}
+        />
       </FormModal>
 
       <FormModal
@@ -406,7 +431,13 @@ export default function ItemsPage() {
         submitting={submitting}
         formId="edit-item-form"
       >
-        {formBody}
+        <ItemFormBody
+          key="edit-item"
+          form={form}
+          setForm={setForm}
+          companies={companies}
+          setCompanies={setCompanies}
+        />
       </FormModal>
 
       <ConfirmDialog
