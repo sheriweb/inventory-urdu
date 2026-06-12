@@ -59,13 +59,12 @@ Pass hone ke baad hi redeploy karein.
 ## Healthy runtime logs
 
 ```
-[hostinger] exec next start on 0.0.0.0:3000 (pid=...)
-✓ Ready in XXXms
+[hostinger] Next.js ready on 0.0.0.0:3000 pid=...
+Web listening on 3000 — API will start in 20000ms
+API ready on 127.0.0.1:4001
 ```
 
-Sirf **ek** `Ready in` line — agar do hon to duplicate boot ab bhi hai.
-
-Duplicate worker: `duplicate worker exits` — yeh theek hai (foran exit).
+Sirf **ek** `Next.js ready` / boot sequence — duplicate worker: `duplicate worker exits` (theek hai).
 
 ---
 

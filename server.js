@@ -2,6 +2,7 @@
 /**
  * Hostinger hPanel entry file: server.js  (.js required — do not use .sh here)
  */
+const http = require('node:http');
 const { spawn } = require('node:child_process');
 const net = require('node:net');
 const {
@@ -122,6 +123,49 @@ async function waitForPort(port, host = '127.0.0.1', maxMs = 120_000, intervalMs
     await sleep(intervalMs);
   }
   return false;
+}
+
+async function startNextServer(webPort) {
+  const nextPkg = path.join(modulesDir, 'next');
+  if (!existsSync(nextPkg)) {
+    logLine(`FATAL: next package missing at ${nextPkg}`);
+    process.exit(1);
+  }
+
+  logLine(`Starting Next.js in-process on 0.0.0.0:${webPort} from ${webDir}…`);
+  process.chdir(webDir);
+
+  const next = require(nextPkg);
+  const app = next({
+    dev: false,
+    dir: webDir,
+    hostname: '0.0.0.0',
+    port: Number(webPort),
+  });
+  const handle = app.getRequestHandler();
+  await app.prepare();
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      handle(req, res).catch((err) => {
+        logLine(`Next request error: ${err?.stack || err}`);
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end('Internal Server Error');
+        }
+      });
+    });
+
+    server.once('error', (err) => {
+      logLine(`Next server error: ${err?.stack || err}`);
+      reject(err);
+    });
+
+    server.listen(Number(webPort), '0.0.0.0', () => {
+      logLine(`Next.js ready on 0.0.0.0:${webPort} pid=${process.pid}`);
+      resolve(server);
+    });
+  });
 }
 
 async function scheduleApiStart(webPort, apiPort, apiEnv) {
@@ -377,19 +421,7 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
     process.exit(1);
   }
 
-  logLine(`Starting next start on 0.0.0.0:${webPort} from ${webDir}…`);
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [nextBin, 'start', '-p', String(webPort), '-H', '0.0.0.0'], {
-      cwd: webDir,
-      env: process.env,
-      stdio: 'inherit',
-    });
-    child.on('error', reject);
-    child.on('exit', (code, signal) => {
-      logLine(`next start exited code=${code ?? ''} signal=${signal ?? ''}`);
-      process.exit(code ?? 1);
-    });
-  });
+  await startNextServer(webPort);
 })().catch((err) => {
   logLine(`FATAL boot error: ${err?.stack || err}`);
   process.exit(1);

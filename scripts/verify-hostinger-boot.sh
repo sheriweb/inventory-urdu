@@ -37,14 +37,14 @@ if ! kill -0 "$MAIN_PID" 2>/dev/null; then
   fail "Starter exited early (pid $MAIN_PID)"
 fi
 
-READY_COUNT=$(grep -c 'Ready in' "$LOG" 2>/dev/null || echo 0)
+READY_COUNT=$(grep -E 'Ready in|Next.js ready on' "$LOG" 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$READY_COUNT" -ne 1 ]]; then
   echo "--- log ---"
   cat "$LOG" || true
   kill "$MAIN_PID" 2>/dev/null || true
-  fail "Expected exactly 1 'Ready in' line, got $READY_COUNT (duplicate Next boot?)"
+  fail "Expected exactly 1 ready line, got $READY_COUNT (duplicate Next boot?)"
 fi
-pass "Single Next.js Ready"
+pass "Single Next.js ready"
 
 HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$PORT/login" || echo 000)
 if [[ "$HTTP" != "200" ]]; then
