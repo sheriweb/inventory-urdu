@@ -97,9 +97,10 @@ if (existsSync(apiStart)) {
 
 if (existsSync(standaloneServer)) {
   log(`Starting standalone server: ${standaloneServer}`);
-  process.chdir(standaloneDir);
-  const require = createRequire(import.meta.url);
-  require('./apps/web/server.js');
+  const serverDir = path.dirname(standaloneServer);
+  process.chdir(serverDir);
+  const require = createRequire(standaloneServer);
+  require(standaloneServer);
 } else {
   log('Standalone missing — falling back to next start');
   const nextBin = path.join(root, 'node_modules/next/dist/bin/next');
