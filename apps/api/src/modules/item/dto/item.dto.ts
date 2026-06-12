@@ -37,6 +37,10 @@ export class CreateItemDto {
   @IsString()
   model?: string;
 
+  @IsOptional()
+  @IsString()
+  storage?: string;
+
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
@@ -67,6 +71,10 @@ export class UpdateItemDto {
   @IsOptional()
   @IsString()
   model?: string;
+
+  @IsOptional()
+  @IsString()
+  storage?: string;
 
   @IsOptional()
   @Type(() => Number)

@@ -28,7 +28,7 @@ export function ItemIdentifierFieldsEditor({ value, onChange }: Props) {
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
         <p className="font-medium text-slate-800">آئٹم کی قسم</p>
         <p className="mt-1">
-          موبائل = IMEI 1، IMEI 2 · موٹر سائیکل = رجسٹریشن، ماڈل، ہارس پاور، میکر، چیسز، انجن — فروخت پر خود ظاہر ہوں گی
+          موبائل = IMEI 1، IMEI 2 + سٹوریج (4/64، 8/128) · موٹر سائیکل = رجسٹریشن، ماڈل، ہارس پاور، میکر، چیسز، انجن
         </p>
       </div>
 

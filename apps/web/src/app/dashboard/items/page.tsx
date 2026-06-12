@@ -7,31 +7,199 @@ import { listFromResponse } from '@/lib/api-response';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { QuickAddSelect } from '@/components/forms/quick-add-select';
 import { PageToolbar } from '@/components/layout/page-toolbar';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { TableRowActions } from '@/components/ui/table-actions';
-import { StepFormModal } from '@/components/ui/step-form-modal';
+import { FormModal } from '@/components/ui/form-modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { FormField } from '@/components/ui/form-section';
 import { UrduNameInput } from '@/components/forms/urdu-name-input';
+import { ItemIdentifierFieldsEditor } from '@/components/forms/item-identifier-fields-editor';
 import { fmtMoney } from '@/lib/format';
 import { useDebounce } from '@/hooks/use-debounce';
-import { ItemIdentifierFieldsEditor } from '@/components/forms/item-identifier-fields-editor';
-import type { Company, Item, ItemIdentifierField } from '@inventory-urdu/shared';
-import { normalizeIdentifierFields } from '@inventory-urdu/shared';
+import {
+  MOBILE_STORAGE_PRESETS,
+  itemCatalogLabel,
+  normalizeIdentifierFields,
+  saleTypeFromIdentifierFields,
+  type Company,
+  type Item,
+  type ItemIdentifierField,
+} from '@inventory-urdu/shared';
 
 type ItemRow = Item & { company?: { id: string; name: string } };
 
-const emptyForm = {
+type ItemFormState = {
+  companyId: string;
+  name: string;
+  model: string;
+  storage: string;
+  purchaseRate: string;
+  saleRate: string;
+  identifierFields: ItemIdentifierField[];
+};
+
+const emptyForm: ItemFormState = {
   companyId: '',
   name: '',
   model: '',
+  storage: '',
   purchaseRate: '',
   saleRate: '',
-  identifierFields: [] as ItemIdentifierField[],
+  identifierFields: [],
 };
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="col-span-full border-b border-slate-100 pb-1 text-xs font-semibold text-slate-600">
+      {children}
+    </p>
+  );
+}
+
+function ItemFormBody({
+  form,
+  setForm,
+  companies,
+  setCompanies,
+}: {
+  form: ItemFormState;
+  setForm: React.Dispatch<React.SetStateAction<ItemFormState>>;
+  companies: Company[];
+  setCompanies: React.Dispatch<React.SetStateAction<Company[]>>;
+}) {
+  const isMobile = saleTypeFromIdentifierFields(form.identifierFields) === 'mobile';
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <SectionTitle>مصنوعات</SectionTitle>
+      <FormField label="کمپنی" className="sm:col-span-2">
+        <QuickAddSelect
+          entity="company"
+          value={form.companyId}
+          onChange={(id) => setForm({ ...form, companyId: id })}
+          required
+          options={companies.map((c) => ({ value: c.id, label: c.name }))}
+          onOptionAdded={(record) => {
+            const company = record as Company;
+            setCompanies((prev) => [...prev, company]);
+            setForm((f) => ({ ...f, companyId: company.id }));
+          }}
+        >
+          {companies.length === 0 ? <option value="">پہلے کمپنی شامل کریں</option> : null}
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </QuickAddSelect>
+      </FormField>
+      <FormField label="نام">
+        <UrduNameInput value={form.name} onChange={(name) => setForm({ ...form, name })} required />
+      </FormField>
+      <FormField label="ماڈل">
+        <Input
+          value={form.model}
+          onChange={(e) => setForm({ ...form, model: e.target.value })}
+          dir="ltr"
+          className="text-left"
+          placeholder="Note 60 Pro"
+        />
+      </FormField>
+      {isMobile ? (
+        <FormField label="سٹوریج (RAM/GB)" className="sm:col-span-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Select
+              value={MOBILE_STORAGE_PRESETS.includes(form.storage as (typeof MOBILE_STORAGE_PRESETS)[number]) ? form.storage : ''}
+              onChange={(e) => setForm({ ...form, storage: e.target.value })}
+            >
+              <option value="">— تیز انتخاب —</option>
+              {MOBILE_STORAGE_PRESETS.map((preset) => (
+                <option key={preset} value={preset}>
+                  {preset}
+                </option>
+              ))}
+            </Select>
+            <Input
+              value={form.storage}
+              onChange={(e) => setForm({ ...form, storage: e.target.value })}
+              dir="ltr"
+              className="text-left"
+              placeholder="4/64 یا 8/128"
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-500">مثلاً 8/128 = 8GB RAM، 128GB سٹوریج</p>
+        </FormField>
+      ) : null}
+
+      <SectionTitle>ریٹ</SectionTitle>
+      <FormField label="خرید ریٹ">
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          value={form.purchaseRate}
+          onChange={(e) => setForm({ ...form, purchaseRate: e.target.value })}
+          required
+          dir="ltr"
+          className="text-left"
+        />
+      </FormField>
+      <FormField label="فروخت ریٹ">
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          value={form.saleRate}
+          onChange={(e) => setForm({ ...form, saleRate: e.target.value })}
+          required
+          dir="ltr"
+          className="text-left"
+        />
+      </FormField>
+
+      <SectionTitle>آئٹم کی قسم</SectionTitle>
+      <div className="sm:col-span-2">
+        <ItemIdentifierFieldsEditor
+          value={form.identifierFields}
+          onChange={(identifierFields) => {
+            const nowMobile = saleTypeFromIdentifierFields(identifierFields) === 'mobile';
+            setForm((prev) => ({
+              ...prev,
+              identifierFields,
+              storage: nowMobile ? prev.storage : '',
+            }));
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function formIsValid(form: ItemFormState): boolean {
+  if (!form.companyId || !form.name.trim()) return false;
+  if (form.purchaseRate === '' || form.saleRate === '') return false;
+  if (Number(form.purchaseRate) < 0 || Number(form.saleRate) < 0) return false;
+  return true;
+}
+
+function toApiPayload(form: ItemFormState) {
+  return {
+    companyId: form.companyId,
+    name: form.name,
+    model: form.model || undefined,
+    storage:
+      saleTypeFromIdentifierFields(form.identifierFields) === 'mobile' && form.storage.trim()
+        ? form.storage.trim()
+        : undefined,
+    purchaseRate: Number(form.purchaseRate),
+    saleRate: Number(form.saleRate),
+    identifierFields: normalizeIdentifierFields(form.identifierFields),
+  };
+}
 
 export default function ItemsPage() {
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -87,6 +255,7 @@ export default function ItemsPage() {
       companyId: row.company?.id ?? row.companyId,
       name: row.name,
       model: row.model ?? '',
+      storage: row.storage ?? '',
       purchaseRate: String(row.purchaseRate),
       saleRate: String(row.saleRate),
       identifierFields: normalizeIdentifierFields(row.identifierFields),
@@ -94,17 +263,14 @@ export default function ItemsPage() {
   }
 
   async function onAdd() {
+    if (!formIsValid(form)) {
+      notify.error('تمام ضروری فیلڈز بھریں');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/items', {
-        companyId: form.companyId,
-        name: form.name,
-        model: form.model || undefined,
-        purchaseRate: Number(form.purchaseRate),
-        saleRate: Number(form.saleRate),
-        identifierFields: normalizeIdentifierFields(form.identifierFields),
-      });
+      await api.post('/items', toApiPayload(form));
       setAddOpen(false);
       await load();
       notify.created('آئٹم');
@@ -117,17 +283,13 @@ export default function ItemsPage() {
   }
 
   async function onSaveEdit() {
-    if (!editRow) return;
+    if (!editRow || !formIsValid(form)) {
+      notify.error('تمام ضروری فیلڈز بھریں');
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.patch(`/items/${editRow.id}`, {
-        companyId: form.companyId,
-        name: form.name,
-        model: form.model || undefined,
-        purchaseRate: Number(form.purchaseRate),
-        saleRate: Number(form.saleRate),
-        identifierFields: normalizeIdentifierFields(form.identifierFields),
-      });
+      await api.patch(`/items/${editRow.id}`, toApiPayload(form));
       setEditRow(null);
       await load();
       notify.updated('آئٹم');
@@ -155,90 +317,52 @@ export default function ItemsPage() {
     }
   }
 
-  const itemSteps = useMemo(
+  const columns: DataTableColumn<ItemRow>[] = useMemo(
     () => [
       {
-        title: 'مصنوعات',
-        description: 'کمپنی، نام اور ماڈل',
-        validate: () => Boolean(form.companyId && form.name.trim()),
-        content: (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="کمپنی" className="sm:col-span-2">
-              <QuickAddSelect
-                entity="company"
-                value={form.companyId}
-                onChange={(id) => setForm({ ...form, companyId: id })}
-                required
-                options={companies.map((c) => ({ value: c.id, label: c.name }))}
-                onOptionAdded={(record) => {
-                  const company = record as Company;
-                  setCompanies((prev) => [...prev, company]);
-                  setForm((f) => ({ ...f, companyId: company.id }));
-                }}
-              >
-                {companies.length === 0 ? <option value="">پہلے کمپنی شامل کریں</option> : null}
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </QuickAddSelect>
-            </FormField>
-            <FormField label="نام">
-              <UrduNameInput value={form.name} onChange={(name) => setForm({ ...form, name })} required />
-            </FormField>
-            <FormField label="ماڈل">
-              <Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
-            </FormField>
-          </div>
+        id: 'code',
+        header: 'کوڈ',
+        cell: (r) => (
+          <span dir="ltr" className="font-mono text-slate-600">
+            {r.itemCode}
+          </span>
         ),
       },
       {
-        title: 'ریٹ',
-        description: 'خرید اور فروخت ریٹ',
-        validate: () => Number(form.purchaseRate) >= 0 && Number(form.saleRate) >= 0 && form.purchaseRate !== '' && form.saleRate !== '',
-        content: (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="خرید ریٹ">
-              <Input type="number" min={0} step="0.01" value={form.purchaseRate} onChange={(e) => setForm({ ...form, purchaseRate: e.target.value })} required dir="ltr" className="text-left" />
-            </FormField>
-            <FormField label="فروخت ریٹ">
-              <Input type="number" min={0} step="0.01" value={form.saleRate} onChange={(e) => setForm({ ...form, saleRate: e.target.value })} required dir="ltr" className="text-left" />
-            </FormField>
-          </div>
-        ),
+        id: 'name',
+        header: 'نام',
+        cell: (r) => <span className="font-semibold text-slate-900">{itemCatalogLabel(r)}</span>,
       },
+      { id: 'company', header: 'کمپنی', cell: (r) => r.company?.name ?? '—' },
+      { id: 'model', header: 'ماڈل', cell: (r) => r.model ?? '—' },
+      { id: 'storage', header: 'سٹوریج', cell: (r) => (r.storage ? <span dir="ltr">{r.storage}</span> : '—') },
       {
-        title: 'آئٹم کی قسم',
-        description: 'موبائل یا موٹر سائیکل',
-        validate: () => true,
-        content: (
-          <ItemIdentifierFieldsEditor
-            value={form.identifierFields}
-            onChange={(identifierFields) => setForm({ ...form, identifierFields })}
-          />
+        id: 'identifiers',
+        header: 'قسم',
+        cell: (r) => {
+          const type = saleTypeFromIdentifierFields(r.identifierFields);
+          if (type === 'mobile') return <span className="text-xs text-emerald-700">موبائل</span>;
+          if (type === 'bike') return <span className="text-xs text-emerald-700">بائیک</span>;
+          return '—';
+        },
+      },
+      { id: 'purchase', header: 'خرید', cell: (r) => <span dir="ltr">{fmtMoney(r.purchaseRate)}</span> },
+      {
+        id: 'sale',
+        header: 'فروخت',
+        cell: (r) => (
+          <span dir="ltr" className="font-medium text-emerald-800">
+            {fmtMoney(r.saleRate)}
+          </span>
         ),
       },
     ],
-    [form, companies],
+    [],
   );
 
-  const columns: DataTableColumn<ItemRow>[] = [
-    { id: 'code', header: 'کوڈ', cell: (r) => <span dir="ltr" className="font-mono text-slate-600">{r.itemCode}</span> },
-    { id: 'name', header: 'نام', cell: (r) => <span className="font-semibold text-slate-900">{r.name}</span> },
-    { id: 'company', header: 'کمپنی', cell: (r) => r.company?.name ?? '—' },
-    { id: 'model', header: 'ماڈل', cell: (r) => r.model ?? '—' },
-    {
-      id: 'identifiers',
-      header: 'شناخت',
-      cell: (r) =>
-        normalizeIdentifierFields(r.identifierFields).length > 0 ? (
-          <span className="text-xs text-emerald-700">ہاں</span>
-        ) : (
-          '—'
-        ),
-    },
-    { id: 'purchase', header: 'خرید', cell: (r) => <span dir="ltr">{fmtMoney(r.purchaseRate)}</span> },
-    { id: 'sale', header: 'فروخت', cell: (r) => <span dir="ltr" className="font-medium text-emerald-800">{fmtMoney(r.saleRate)}</span> },
-  ];
+  const formBody = (
+    <ItemFormBody form={form} setForm={setForm} companies={companies} setCompanies={setCompanies} />
+  );
 
   return (
     <div className="space-y-6">
@@ -262,7 +386,7 @@ export default function ItemsPage() {
         onPageChange={setPage}
         searchValue={searchQ}
         onSearchChange={setSearchQ}
-        searchPlaceholder="نام، ماڈل، کوڈ…"
+        searchPlaceholder="نام، ماڈل، سٹوریج، کوڈ…"
         emptyDescription="پہلا آئٹم شامل کریں"
         emptyAction={
           <Button type="button" onClick={openAdd} className="gap-1.5">
@@ -270,34 +394,34 @@ export default function ItemsPage() {
             نیا آئٹم
           </Button>
         }
-        actions={(row) => (
-          <TableRowActions onEdit={() => openEdit(row)} onDelete={() => setDeleteRow(row)} />
-        )}
+        actions={(row) => <TableRowActions onEdit={() => openEdit(row)} onDelete={() => setDeleteRow(row)} />}
       />
 
-      <StepFormModal
+      <FormModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         title="نیا آئٹم"
         description="مصنوعات کا ریکارڈ شامل کریں"
         size="lg"
-        steps={itemSteps}
         onSubmit={onAdd}
         submitting={submitting}
         submitLabel="شامل کریں"
         formId="add-item-form"
-      />
+      >
+        {formBody}
+      </FormModal>
 
-      <StepFormModal
+      <FormModal
         open={Boolean(editRow)}
         onClose={() => setEditRow(null)}
         title="آئٹم ترمیم"
         size="lg"
-        steps={itemSteps}
         onSubmit={onSaveEdit}
         submitting={submitting}
         formId="edit-item-form"
-      />
+      >
+        {formBody}
+      </FormModal>
 
       <ConfirmDialog
         open={Boolean(deleteRow)}

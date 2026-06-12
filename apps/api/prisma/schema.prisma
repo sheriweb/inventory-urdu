@@ -189,6 +189,7 @@ model Item {
   itemCode     Int
   name         String
   model        String?
+  storage      String?
   purchaseRate Decimal     @db.Decimal(12, 2)
   saleRate     Decimal     @db.Decimal(12, 2)
   stockQuantity Int        @default(0)

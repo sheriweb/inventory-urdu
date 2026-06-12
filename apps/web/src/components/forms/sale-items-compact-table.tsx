@@ -17,7 +17,7 @@ import {
   saleLineTotal,
   type SaleItemLine,
 } from '@/lib/sale-item-lines';
-import { ITEM_SALE_TYPE_LABELS, type Item, type ItemSaleType } from '@inventory-urdu/shared';
+import { ITEM_SALE_TYPE_LABELS, itemCatalogLabel, type Item, type ItemSaleType } from '@inventory-urdu/shared';
 
 const SALE_TYPES: ItemSaleType[] = ['mobile', 'bike', 'general'];
 
@@ -151,7 +151,10 @@ export function SaleItemsCompactTable({
                     entity="item"
                     value={line.catalogItemId}
                     onChange={(id) => onCatalogSelect(line.key, id)}
-                    options={catalog.map((item) => ({ value: item.id, label: item.name }))}
+                    options={catalog.map((item) => ({
+                      value: item.id,
+                      label: itemCatalogLabel(item),
+                    }))}
                     onOptionAdded={(record) => {
                       const item = record as Item;
                       onCatalogAdded?.(item);
@@ -162,7 +165,7 @@ export function SaleItemsCompactTable({
                     <option value="">دستی</option>
                     {catalog.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.name}
+                        {itemCatalogLabel(item)}
                       </option>
                     ))}
                   </QuickAddSelect>

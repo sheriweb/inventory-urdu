@@ -1,5 +1,6 @@
 import {
   fieldsForSaleType,
+  itemCatalogLabel,
   normalizeIdentifierFields,
   resizeUnitDetailRowsWithFields,
   saleTypeFromIdentifierFields,
@@ -153,6 +154,8 @@ export function grandTotalFromLines(lines: SaleItemLine[]): number {
 type CatalogItem = {
   id: string;
   name: string;
+  model?: string | null;
+  storage?: string | null;
   saleRate: number | string;
   identifierFields?: ItemIdentifierField[] | null;
 };
@@ -178,7 +181,7 @@ export function applyCatalogToLine(
   const nextLine: SaleItemLine = {
     ...line,
     catalogItemId: itemId,
-    itemName: item.name,
+    itemName: itemCatalogLabel(item),
     rate: String(item.saleRate),
     saleType,
     unitDetailRows: typeChanged ? [] : line.unitDetailRows,

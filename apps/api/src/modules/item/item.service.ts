@@ -63,6 +63,7 @@ export class ItemService {
           itemCode,
           name: dto.name,
           model: dto.model,
+          storage: dto.storage,
           purchaseRate: dto.purchaseRate,
           saleRate: dto.saleRate,
           identifierFields: normalizeIdentifierFieldsForDb(dto.identifierFields),
@@ -78,7 +79,11 @@ export class ItemService {
 
     if (query.q?.trim()) {
       const q = query.q.trim();
-      where.OR = [{ name: { contains: q } }, { model: { contains: q } }];
+      where.OR = [
+        { name: { contains: q } },
+        { model: { contains: q } },
+        { storage: { contains: q } },
+      ];
     }
 
     const usePagination = Boolean(query.page || query.limit || query.q?.trim());
@@ -135,6 +140,7 @@ export class ItemService {
     if (dto.companyId !== undefined) data.companyId = dto.companyId;
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.model !== undefined) data.model = dto.model;
+    if (dto.storage !== undefined) data.storage = dto.storage;
     if (dto.purchaseRate !== undefined) data.purchaseRate = dto.purchaseRate;
     if (dto.saleRate !== undefined) data.saleRate = dto.saleRate;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;

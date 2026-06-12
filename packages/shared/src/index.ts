@@ -105,6 +105,7 @@ export type {
 export {
   ITEM_IDENTIFIER_PRESETS,
   ITEM_SALE_TYPE_LABELS,
+  MOBILE_STORAGE_PRESETS,
   buildEmptyUnitDetails,
   buildUnitDetailRows,
   buildUnitDetailRowsFromFields,
@@ -112,6 +113,7 @@ export {
   fieldsForSaleType,
   getDisplayFieldsFromUnit,
   identifierFieldsForSaleType,
+  itemCatalogLabel,
   leaseUnitDetailsToRows,
   newSaleDetailRow,
   normalizeIdentifierFields,
@@ -146,6 +148,7 @@ export interface Item {
   itemCode: number;
   name: string;
   model?: string | null;
+  storage?: string | null;
   purchaseRate: string;
   saleRate: string;
   stockQuantity?: number;

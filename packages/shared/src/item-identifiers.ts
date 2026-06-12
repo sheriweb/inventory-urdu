@@ -39,6 +39,32 @@ export const ITEM_SALE_TYPE_LABELS: Record<ItemSaleType, string> = {
   general: 'عام آئٹم',
 };
 
+/** Common mobile RAM/ROM labels (e.g. 4/64 = 4GB RAM, 64GB storage) */
+export const MOBILE_STORAGE_PRESETS = [
+  '2/32',
+  '3/32',
+  '4/64',
+  '4/128',
+  '6/64',
+  '6/128',
+  '8/128',
+  '8/256',
+  '12/256',
+  '12/512',
+  '16/512',
+] as const;
+
+export function itemCatalogLabel(item: {
+  name: string;
+  model?: string | null;
+  storage?: string | null;
+}): string {
+  const parts = [item.name.trim()];
+  if (item.model?.trim()) parts.push(item.model.trim());
+  if (item.storage?.trim()) parts.push(item.storage.trim());
+  return parts.join(' ');
+}
+
 export const ITEM_IDENTIFIER_PRESETS: Record<
   Exclude<ItemIdentifierPresetKey, 'custom' | 'general'>,
   { label: string; fields: ItemIdentifierField[] }
