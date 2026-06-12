@@ -19,6 +19,18 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        source: '/dashboard/:path*',
+        headers: [{ key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' }],
+      },
+      {
+        source: '/login',
+        headers: [{ key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' }],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: '/dashboard/stock/add', destination: '/dashboard/stock', permanent: false },

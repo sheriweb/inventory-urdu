@@ -8,10 +8,13 @@ import { parse } from 'node:url';
 import {
   appendFileSync,
   chmodSync,
+  copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +67,34 @@ function fixPrismaEnginePermissions(modulesDir) {
     } catch {
       /* ignore */
     }
+  }
+}
+
+function mergeDirContents(srcRoot, destRoot) {
+  if (!existsSync(srcRoot)) return;
+  mkdirSync(destRoot, { recursive: true });
+  for (const entry of readdirSync(srcRoot, { withFileTypes: true })) {
+    const src = path.join(srcRoot, entry.name);
+    const dest = path.join(destRoot, entry.name);
+    if (entry.isDirectory()) {
+      mergeDirContents(src, dest);
+    } else if (!existsSync(dest)) {
+      copyFileSync(src, dest);
+    }
+  }
+}
+
+function preserveStaticAssetsAcrossDeploys(logPathRef) {
+  const staticDir = path.join(webDir, '.next/static');
+  const prevDir = path.join(tmpDir, 'prev-next-static');
+  mkdirSync(tmpDir, { recursive: true });
+  if (existsSync(prevDir) && existsSync(staticDir)) {
+    logLine(logPathRef, '[hostinger] Merging previous _next/static (avoid chunk 404 after deploy)…');
+    mergeDirContents(prevDir, staticDir);
+  }
+  if (existsSync(staticDir)) {
+    if (existsSync(prevDir)) rmSync(prevDir, { recursive: true, force: true });
+    cpSync(staticDir, prevDir, { recursive: true });
   }
 }
 
@@ -269,6 +300,7 @@ if (existsSync(maintenanceFlag)) {
   }
 
   Object.assign(process.env, webEnv);
+  preserveStaticAssetsAcrossDeploys(logPath);
   logLine(logPath, `[hostinger] Preparing Next.js (Passenger main process) on port ${webPort}…`);
 
   const { createRequire } = await import('node:module');

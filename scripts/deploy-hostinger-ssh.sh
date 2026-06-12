@@ -56,6 +56,7 @@ RSYNC_OPTS=(
   --exclude 'tmp/*.tgz'
   --exclude 'tmp/api-manual*.log'
   --exclude 'tmp/manual-web.log'
+  --exclude 'apps/web/.next/static/chunks'
 )
 
 upload_ok=0
@@ -74,6 +75,16 @@ if [[ "$upload_ok" != "1" ]]; then
   echo "❌ Upload failed after 5 attempts. Disable hPanel Git redeploy and wait for resource limits to reset."
   exit 1
 fi
+
+echo "▶ Syncing new JS/CSS chunks (merge, keep old chunks until CDN/browsers refresh)…"
+for attempt in 1 2 3; do
+  if sshpass -e rsync -az \
+    -e "ssh ${SSH_OPTS[*]}" \
+    "$ROOT/apps/web/.next/static/" "$SSH_USER@$SSH_HOST:$SSH_REMOTE_PATH/apps/web/.next/static/"; then
+    break
+  fi
+  sleep 15
+done
 
 echo "▶ Server post-deploy…"
 ssh_cmd "cd '$SSH_REMOTE_PATH' && \

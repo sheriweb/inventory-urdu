@@ -7,6 +7,19 @@ cd "$ROOT"
 
 echo "▶ Post-deploy on server: $ROOT"
 
+CHUNKS_DIR="apps/web/.next/static"
+PREV_STATIC="tmp/prev-next-static"
+mkdir -p tmp
+if [[ -d "$PREV_STATIC" && -d "$CHUNKS_DIR" ]]; then
+  echo "▶ Merging previous _next/static assets (prevent chunk 404 after deploy)…"
+  cp -an "$PREV_STATIC/." "$CHUNKS_DIR/" 2>/dev/null || true
+fi
+if [[ -d "$CHUNKS_DIR" ]]; then
+  rm -rf "$PREV_STATIC"
+  mkdir -p "$PREV_STATIC"
+  cp -a "$CHUNKS_DIR/." "$PREV_STATIC/" 2>/dev/null || true
+fi
+
 chmod +x scripts/*.sh 2>/dev/null || true
 
 if [[ -f hostinger-production.env ]]; then
