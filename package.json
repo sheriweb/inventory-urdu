@@ -24,6 +24,7 @@
     "hostinger:build": "npm run build:shared && npm run db:generate -w @inventory-urdu/api && rm -f apps/api/tsconfig.build.tsbuildinfo && NODE_OPTIONS='--max-old-space-size=512' npm run build -w @inventory-urdu/api && HOSTINGER_COMBINED=1 INTERNAL_API_URL=http://127.0.0.1:4001 NODE_OPTIONS='--max-old-space-size=512' npm run build -w @inventory-urdu/web",
     "start": "node server.js",
     "hostinger:start": "node server.js",
+    "verify:hostinger": "bash scripts/verify-hostinger-boot.sh",
     "deploy:hostinger": "bash scripts/deploy-hostinger-ssh.sh"
   },
   "dependencies": {
