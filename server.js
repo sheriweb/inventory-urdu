@@ -135,22 +135,33 @@ async function ensureSingleWebBoot(webPort) {
     process.exit(0);
   }
 
-  if (existsSync(webBootDir)) {
-    const oldPid = Number(readFileSync(path.join(webBootDir, 'pid'), 'utf8').trim() || '0');
-    if (isPidAlive(oldPid) && (await isPortOpen(webPort, '127.0.0.1'))) {
-      logLine(`Web boot already running (pid ${oldPid}) — duplicate worker exits`);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      mkdirSync(webBootDir);
+      writeFileSync(path.join(webBootDir, 'pid'), String(process.pid));
+      return;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+
+    for (let i = 0; i < 20; i += 1) {
+      await sleep(500);
+      if (await isPortOpen(webPort, '127.0.0.1')) {
+        logLine(`PORT ${webPort} is up — duplicate worker exits`);
+        process.exit(0);
+      }
+    }
+
+    try {
+      rmSync(webBootDir, { recursive: true, force: true });
+    } catch {
+      logLine('Boot lock busy — duplicate worker exits');
       process.exit(0);
     }
-    rmSync(webBootDir, { recursive: true, force: true });
   }
 
-  mkdirSync(webBootDir, { recursive: true });
-  writeFileSync(path.join(webBootDir, 'pid'), String(process.pid));
-
-  if (await isPortOpen(webPort, '127.0.0.1')) {
-    logLine(`PORT ${webPort} opened by peer — duplicate worker exits`);
-    process.exit(0);
-  }
+  logLine('Could not acquire web boot lock — duplicate worker exits');
+  process.exit(0);
 }
 
 process.on('uncaughtException', (err) => {
