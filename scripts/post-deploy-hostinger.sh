@@ -46,6 +46,9 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
     fi
     echo "⚠ db push attempt $attempt failed — retrying in 5s…"
     sleep 5
+    if [[ "$attempt" == "3" ]]; then
+      echo "⚠ db push failed after 3 attempts — app will still restart"
+    fi
   done
 fi
 

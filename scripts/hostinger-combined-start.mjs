@@ -1,20 +1,19 @@
 /**
- * Hostinger / LiteSpeed Passenger: Next HTTP server in THIS process + API as detached child.
+ * Hostinger / LiteSpeed Passenger: start Next HTTP server fast, API in background.
+ * Do NOT block boot on db push or large file copies — that causes 503 on shared hosting.
  */
 import { spawn } from 'node:child_process';
+import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import net from 'node:net';
 import { parse } from 'node:url';
 import {
   appendFileSync,
   chmodSync,
-  copyFileSync,
-  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -46,13 +45,6 @@ function logLine(logPath, message) {
   console.log(message);
 }
 
-function resolveTool(...candidates) {
-  for (const candidate of candidates) {
-    if (candidate && existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
@@ -70,34 +62,6 @@ function fixPrismaEnginePermissions(modulesDir) {
   }
 }
 
-function mergeDirContents(srcRoot, destRoot) {
-  if (!existsSync(srcRoot)) return;
-  mkdirSync(destRoot, { recursive: true });
-  for (const entry of readdirSync(srcRoot, { withFileTypes: true })) {
-    const src = path.join(srcRoot, entry.name);
-    const dest = path.join(destRoot, entry.name);
-    if (entry.isDirectory()) {
-      mergeDirContents(src, dest);
-    } else if (!existsSync(dest)) {
-      copyFileSync(src, dest);
-    }
-  }
-}
-
-function preserveStaticAssetsAcrossDeploys(logPathRef) {
-  const staticDir = path.join(webDir, '.next/static');
-  const prevDir = path.join(tmpDir, 'prev-next-static');
-  mkdirSync(tmpDir, { recursive: true });
-  if (existsSync(prevDir) && existsSync(staticDir)) {
-    logLine(logPathRef, '[hostinger] Merging previous _next/static (avoid chunk 404 after deploy)…');
-    mergeDirContents(prevDir, staticDir);
-  }
-  if (existsSync(staticDir)) {
-    if (existsSync(prevDir)) rmSync(prevDir, { recursive: true, force: true });
-    cpSync(staticDir, prevDir, { recursive: true });
-  }
-}
-
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = path.join(root, 'apps/api');
 const webDir = path.join(root, 'apps/web');
@@ -111,6 +75,18 @@ const apiNode =
     ? '/opt/alt/alt-nodejs20/root/bin/node'
     : node);
 const modulesDir = path.join(root, 'node_modules');
+
+const MIME = {
+  '.js': 'application/javascript; charset=UTF-8',
+  '.css': 'text/css; charset=UTF-8',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.json': 'application/json; charset=UTF-8',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+};
 
 function normalizeEnvValue(key, value) {
   if (key === 'DATABASE_URL' && typeof value === 'string') {
@@ -140,13 +116,12 @@ function isPortOpen(port, host = '127.0.0.1') {
   });
 }
 
-function startApiDetached(apiEnv, apiLogPath) {
+function startApiDetached(apiEnv) {
   apiEnv.HOSTINGER_COMBINED = '1';
   apiEnv.LAZY_DB_CONNECT = '1';
   apiEnv.UV_THREADPOOL_SIZE = '2';
   apiEnv.API_NODE_BIN = apiNode;
-  const envFile = path.join(tmpDir, 'api.env');
-  writeEnvFile(envFile, apiEnv);
+  writeEnvFile(path.join(tmpDir, 'api.env'), apiEnv);
   const startScript = path.join(root, 'scripts/start-api-hostinger.sh');
   chmodSync(startScript, 0o755);
   spawn('/bin/bash', [startScript], {
@@ -175,20 +150,32 @@ function loadProductionEnv() {
   return merged;
 }
 
+function safeFileUnderRoot(rootDir, relPath) {
+  const filePath = path.normalize(path.join(rootDir, relPath));
+  if (!filePath.startsWith(path.normalize(rootDir + path.sep))) return null;
+  if (!existsSync(filePath)) return null;
+  try {
+    if (!statSync(filePath).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return filePath;
+}
+
+function sendFile(res, filePath, cacheControl) {
+  const ext = path.extname(filePath).toLowerCase();
+  res.statusCode = 200;
+  res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+  res.setHeader('Cache-Control', cacheControl);
+  createReadStream(filePath).pipe(res);
+}
+
 loadProductionEnv();
 mkdirSync(tmpDir, { recursive: true });
 process.chdir(root);
 fixPrismaEnginePermissions(modulesDir);
 fixPrismaEnginePermissions(path.join(apiDir, 'node_modules'));
 
-const prismaCli = resolveTool(
-  path.join(modulesDir, 'prisma/build/index.js'),
-  path.join(apiDir, 'node_modules/prisma/build/index.js'),
-);
-const tsNodeCli = resolveTool(
-  path.join(modulesDir, 'ts-node/dist/bin.js'),
-  path.join(apiDir, 'node_modules/ts-node/dist/bin.js'),
-);
 const apiPort = process.env.API_INTERNAL_PORT || '4001';
 const webPort = process.env.PORT || process.env.PASSENGER_PORT || '3000';
 
@@ -204,117 +191,105 @@ if (existsSync(maintenanceFlag)) {
   logLine(logPath, '[hostinger] FATAL: apps/web/.next build missing — run npm run hostinger:build');
   process.exit(1);
 } else {
-  const fileEnv = loadProductionEnv();
-  const nodePath = [modulesDir, path.join(apiDir, 'node_modules'), path.join(webDir, 'node_modules')]
-    .filter((p) => existsSync(p))
-    .join(path.delimiter);
+  (async () => {
+    const fileEnv = loadProductionEnv();
+    const nodePath = [modulesDir, path.join(apiDir, 'node_modules'), path.join(webDir, 'node_modules')]
+      .filter((p) => existsSync(p))
+      .join(path.delimiter);
 
-  const apiEnv = {
-    PATH: process.env.PATH || '/usr/bin:/bin',
-    HOME: process.env.HOME,
-    LANG: process.env.LANG || 'en_US.UTF-8',
-    ...fileEnv,
-    DATABASE_URL: normalizeEnvValue(
-      'DATABASE_URL',
-      fileEnv.DATABASE_URL || process.env.DATABASE_URL,
-    ),
-    JWT_ACCESS_SECRET: fileEnv.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
-    JWT_REFRESH_SECRET: fileEnv.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET,
-    PORT: apiPort,
-    API_PORT: apiPort,
-    NODE_ENV: 'production',
-    NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=256',
-    NODE_PATH: nodePath,
-  };
+    const apiEnv = {
+      PATH: process.env.PATH || '/usr/bin:/bin',
+      HOME: process.env.HOME,
+      LANG: process.env.LANG || 'en_US.UTF-8',
+      ...fileEnv,
+      DATABASE_URL: normalizeEnvValue('DATABASE_URL', fileEnv.DATABASE_URL || process.env.DATABASE_URL),
+      JWT_ACCESS_SECRET: fileEnv.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET,
+      JWT_REFRESH_SECRET: fileEnv.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET,
+      PORT: apiPort,
+      API_PORT: apiPort,
+      NODE_ENV: 'production',
+      NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=256',
+      NODE_PATH: nodePath,
+      SKIP_DB_PUSH_ON_START: '1',
+    };
 
-  const webEnv = {
-    ...process.env,
-    ...fileEnv,
-    PORT: webPort,
-    HOSTINGER_COMBINED: '1',
-    INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
-    NODE_ENV: 'production',
-    NODE_OPTIONS: process.env.WEB_NODE_OPTIONS || '--max-old-space-size=384',
-    NODE_PATH: nodePath,
-  };
+    const webEnv = {
+      ...process.env,
+      ...fileEnv,
+      PORT: webPort,
+      HOSTINGER_COMBINED: '1',
+      INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
+      NODE_ENV: 'production',
+      NODE_OPTIONS: process.env.WEB_NODE_OPTIONS || '--max-old-space-size=384',
+      NODE_PATH: nodePath,
+    };
 
-  function runOnce(cmd, args, cwd, env) {
-    return new Promise((resolve, reject) => {
-      const child = spawn(cmd, args, { cwd, env, stdio: 'inherit', shell: false });
-      child.on('error', reject);
-      child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exit ${code}`))));
-    });
-  }
+    Object.assign(process.env, webEnv);
 
-  if (prismaCli && apiEnv.DATABASE_URL) {
-    let synced = false;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    logLine(logPath, `[hostinger] Preparing Next.js on port ${webPort}…`);
+
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const next = require('next');
+    const nextApp = next({ dev: false, dir: webDir });
+    await nextApp.prepare();
+    const handle = nextApp.getRequestHandler();
+
+    const staticRoot = path.join(webDir, '.next/static');
+    const publicRoot = path.join(webDir, 'public');
+
+    const server = createServer((req, res) => {
       try {
-        logLine(logPath, `[hostinger] Syncing DB schema (db push) attempt ${attempt}/3…`);
-        await runOnce(node, [prismaCli, 'db', 'push', '--skip-generate', '--accept-data-loss'], apiDir, apiEnv);
-        logLine(logPath, '[hostinger] DB schema sync complete.');
-        synced = true;
-        break;
+        const parsed = parse(req.url, true);
+        const pathname = parsed.pathname || '/';
+
+        if (pathname.startsWith('/_next/static/')) {
+          const rel = pathname.slice('/_next/static/'.length);
+          const filePath = safeFileUnderRoot(staticRoot, rel);
+          if (filePath) {
+            sendFile(res, filePath, 'public, max-age=31536000, immutable');
+            return;
+          }
+        }
+
+        const publicFile = safeFileUnderRoot(publicRoot, pathname.replace(/^\//, ''));
+        if (
+          publicFile &&
+          (pathname === '/manifest.json' ||
+            pathname === '/icon.svg' ||
+            pathname === '/favicon.ico' ||
+            pathname.startsWith('/icons/'))
+        ) {
+          sendFile(res, publicFile, 'public, max-age=86400');
+          return;
+        }
+
+        handle(req, res, parsed);
       } catch (err) {
-        logLine(logPath, `[hostinger] DB schema sync failed attempt ${attempt}: ${err}`);
-        if (attempt < 3) await new Promise((r) => setTimeout(r, 4000));
+        logLine(logPath, `[hostinger] Request error: ${err}`);
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end('Internal Server Error');
+        }
       }
+    });
+
+    server.listen(Number(webPort), '0.0.0.0', () => {
+      logLine(logPath, `[hostinger] Listening on http://0.0.0.0:${webPort}`);
+    });
+
+    if (process.env.START_API_ON_BOOT !== '0') {
+      setTimeout(async () => {
+        if (await isPortOpen(apiPort)) {
+          logLine(logPath, `[hostinger] API already on 127.0.0.1:${apiPort}`);
+          return;
+        }
+        logLine(logPath, `[hostinger] Starting API on 127.0.0.1:${apiPort}…`);
+        startApiDetached(apiEnv);
+      }, 500);
     }
-    if (!synced) {
-      logLine(logPath, '[hostinger] WARNING: DB schema not synced — API may need manual prisma db push.');
-    }
-  }
-
-  if (process.env.RUN_DB_SETUP === '1' && tsNodeCli) {
-    try {
-      logLine(logPath, '[hostinger] RUN_DB_SETUP=1 — seeding…');
-      await runOnce(
-        node,
-        [tsNodeCli, '-r', 'tsconfig-paths/register', 'prisma/seed.ts'],
-        apiDir,
-        apiEnv,
-      );
-      logLine(logPath, '[hostinger] DB seed complete.');
-    } catch (err) {
-      logLine(logPath, `[hostinger] DB seed failed: ${err}`);
-    }
-  }
-
-  const apiLogPath = path.join(tmpDir, 'api.log');
-  writeEnvFile(path.join(tmpDir, 'api.env'), apiEnv);
-
-  const startApiOnBoot = process.env.START_API_ON_BOOT !== '0';
-  if (await isPortOpen(apiPort)) {
-    logLine(logPath, `[hostinger] API already listening on 127.0.0.1:${apiPort}`);
-  } else if (startApiOnBoot) {
-    logLine(
-      logPath,
-      `[hostinger] Starting API (${apiNode}) on 127.0.0.1:${apiPort}…`,
-    );
-    startApiDetached(apiEnv, apiLogPath);
-  } else {
-    logLine(
-      logPath,
-      `[hostinger] API not on :${apiPort} — run: bash scripts/start-api-hostinger.sh`,
-    );
-  }
-
-  Object.assign(process.env, webEnv);
-  preserveStaticAssetsAcrossDeploys(logPath);
-  logLine(logPath, `[hostinger] Preparing Next.js (Passenger main process) on port ${webPort}…`);
-
-  const { createRequire } = await import('node:module');
-  const require = createRequire(import.meta.url);
-  const next = require('next');
-  const nextApp = next({ dev: false, dir: webDir });
-  await nextApp.prepare();
-  const handle = nextApp.getRequestHandler();
-
-  const server = createServer((req, res) => {
-    handle(req, res, parse(req.url, true));
-  });
-
-  server.listen(Number(webPort), '0.0.0.0', () => {
-    logLine(logPath, `[hostinger] Listening on http://0.0.0.0:${webPort}`);
+  })().catch((err) => {
+    logLine(logPath, `[hostinger] FATAL boot error: ${err?.stack || err}`);
+    process.exit(1);
   });
 }

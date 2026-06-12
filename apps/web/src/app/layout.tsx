@@ -4,8 +4,6 @@ import { ClientErrorReporter } from '@/components/client-error-reporter';
 import { ChunkLoadRecovery } from '@/components/chunk-load-recovery';
 import './globals.css';
 
-export const dynamic = 'force-dynamic';
-
 const notoNastaliq = Noto_Nastaliq_Urdu({
   subsets: ['arabic'],
   variable: '--font-noto-nastaliq',
