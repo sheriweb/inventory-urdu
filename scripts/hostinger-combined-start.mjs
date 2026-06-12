@@ -1,3 +1,4 @@
 #!/usr/bin/env node
-/** @deprecated Use scripts/hostinger-entry.cjs in hPanel instead. */
-require('./hostinger-entry.cjs');
+/** @deprecated hPanel entry file should be server.js */
+import { createRequire } from 'node:module';
+createRequire(import.meta.url)('../server.js');
