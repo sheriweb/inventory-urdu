@@ -1,6 +1,6 @@
 /**
  * Hostinger / Passenger entry (CommonJS — no ESM issues).
- * Entry file in hPanel: node scripts/hostinger-entry.cjs
+ * Entry file in hPanel: server.js  (not "node server.js")
  */
 const fs = require('node:fs');
 const path = require('node:path');
