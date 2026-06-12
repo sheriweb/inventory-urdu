@@ -5,6 +5,7 @@ const apiPort = process.env.API_INTERNAL_PORT || '4001';
 const internalApi = process.env.INTERNAL_API_URL || `http://127.0.0.1:${apiPort}`;
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   transpilePackages: ['@inventory-urdu/shared'],
   allowedDevOrigins: ['*.trycloudflare.com'],
   experimental: {

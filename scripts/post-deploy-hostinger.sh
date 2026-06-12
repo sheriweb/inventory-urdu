@@ -29,6 +29,8 @@ if [[ -f hostinger-production.env ]]; then
   set +a
 fi
 
+bash scripts/hostinger-standalone-assets.sh 2>/dev/null || true
+
 echo "▶ Installing production dependencies…"
 npm ci --omit=dev --no-audit --no-fund
 npm run db:generate -w @inventory-urdu/api
