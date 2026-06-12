@@ -14,7 +14,6 @@ import { FormModal } from '@/components/ui/form-modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { FormField } from '@/components/ui/form-section';
-import { UrduNameInput } from '@/components/forms/urdu-name-input';
 import type { Company } from '@inventory-urdu/shared';
 
 export default function CompaniesPage() {
@@ -143,7 +142,7 @@ export default function CompaniesPage() {
         formId="add-company-form"
       >
         <FormField label="نام">
-          <UrduNameInput value={name} onChange={setName} required placeholder="کمپنی کا نام" autoFocus />
+          <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="کمپنی کا نام" autoFocus />
         </FormField>
       </FormModal>
 
@@ -156,7 +155,7 @@ export default function CompaniesPage() {
         formId="edit-company-form"
       >
         <FormField label="نام">
-          <UrduNameInput value={editName} onChange={setEditName} required />
+          <Input value={editName} onChange={(e) => setEditName(e.target.value)} required />
         </FormField>
       </FormModal>
 

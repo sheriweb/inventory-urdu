@@ -219,7 +219,11 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
 
           {(entity === 'area' || entity === 'company' || entity === 'customer' || entity === 'staff' || entity === 'item' || entity === 'expense-account') && (
             <FormField label={entity === 'company' ? 'کمپنی کا نام' : entity === 'expense-account' ? 'اکاؤنٹ نام' : 'نام'}>
-              <UrduNameInput value={name} onChange={setName} required autoFocus />
+              {entity === 'company' || entity === 'expense-account' || entity === 'area' ? (
+                <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+              ) : (
+                <UrduNameInput value={name} onChange={setName} required autoFocus />
+              )}
             </FormField>
           )}
 
