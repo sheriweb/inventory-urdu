@@ -103,14 +103,21 @@ function isPortOpen(port, host = '127.0.0.1') {
 }
 
 function fixPrismaEnginePermissions(dir) {
-  const enginesDir = path.join(dir, '@prisma/engines');
-  if (!existsSync(enginesDir)) return;
-  for (const name of readdirSync(enginesDir)) {
-    if (!name.startsWith('schema-engine') && !name.startsWith('libquery_engine')) continue;
-    try {
-      chmodSync(path.join(enginesDir, name), 0o755);
-    } catch {
-      /* ignore */
+  for (const sub of ['@prisma/engines', '.prisma/client']) {
+    const enginesDir = path.join(dir, sub);
+    if (!existsSync(enginesDir)) continue;
+    for (const name of readdirSync(enginesDir)) {
+      if (
+        !name.startsWith('schema-engine') &&
+        !name.startsWith('libquery_engine') &&
+        !name.startsWith('query-engine')
+      )
+        continue;
+      try {
+        chmodSync(path.join(enginesDir, name), 0o755);
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

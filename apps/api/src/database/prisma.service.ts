@@ -5,6 +5,24 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private connected = false;
 
+  constructor() {
+    super();
+    // A panicked query engine never recovers; exit so the watchdog in
+    // server.js relaunches a fresh API process within ~30s.
+    this.$use(async (params, next) => {
+      try {
+        return await next(params);
+      } catch (err) {
+        const message = String((err as Error)?.message || err);
+        if (message.includes('PANIC') || message.includes('timer has gone away')) {
+          console.error('Prisma engine panic detected — exiting for watchdog restart:', message);
+          setTimeout(() => process.exit(1), 250).unref();
+        }
+        throw err;
+      }
+    });
+  }
+
   async ensureConnected() {
     if (!this.connected) {
       await this.$connect();
