@@ -12,7 +12,7 @@ Har `git push` on `main` → Hostinger khud pull, build, deploy karta hai.
 | Branch | `main` |
 | Node.js | `20` |
 | Build | `npm run hostinger:build` |
-| Start | `bash scripts/hostinger-passenger-start.sh` |
+| Start | `node scripts/hostinger-entry.cjs` |
 
 Environment variables: `deploy/hostinger-production.env.example`
 
