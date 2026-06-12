@@ -797,6 +797,59 @@ export class RecoveryService {
     };
   }
 
+  async listBulkPaymentMessages(user: AuthUser) {
+    const shopId = requireShopId(user);
+    await this.automationService.markOverdueInstallments(shopId);
+    const shop = await this.getShopReminderConfig(shopId);
+    const template = shop.reminderMessageTemplate?.trim() || DEFAULT_REMINDER_TEMPLATE;
+
+    const leases = await this.prisma.leaseAccount.findMany({
+      where: {
+        shopId,
+        status: LeaseStatus.ACTIVE,
+        remainingBalance: { gt: 0 },
+        customer: { mobile: { not: null } },
+      },
+      include: {
+        customer: { select: { id: true, name: true, mobile: true } },
+        installments: {
+          where: { status: { in: PENDING_INSTALLMENT_STATUSES } },
+          orderBy: { dueDate: 'asc' },
+          take: 1,
+        },
+      },
+      orderBy: { accountNumber: 'asc' },
+    });
+
+    const items = leases
+      .filter((lease) => lease.customer.mobile?.trim())
+      .map((lease) => {
+        const inst = lease.installments[0];
+        const amount = inst
+          ? roundMoney(toNumber(inst.scheduledAmount) - toNumber(inst.paidAmount))
+          : roundMoney(toNumber(lease.remainingBalance));
+        const dueDate = inst?.dueDate ?? new Date();
+        return {
+          leaseAccountId: lease.id,
+          accountNumber: lease.accountNumber,
+          customerName: lease.customer.name,
+          customerMobile: lease.customer.mobile!.trim(),
+          amount,
+          dueDate,
+          remainingBalance: roundMoney(toNumber(lease.remainingBalance)),
+          shopName: shop.name,
+          messageTemplate: template,
+        };
+      })
+      .filter((row) => row.amount > 0);
+
+    return {
+      shopName: shop.name,
+      messageTemplate: template,
+      items,
+    };
+  }
+
   async markReminderSent(user: AuthUser, scheduleId: string, dto: MarkReminderSentDto) {
     const shopId = requireShopId(user);
     const channel =

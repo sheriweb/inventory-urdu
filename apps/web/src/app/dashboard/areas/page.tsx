@@ -154,7 +154,7 @@ export default function AreasPage() {
             <UrduNameInput value={name} onChange={setName} required placeholder="علاقے کا نام" autoFocus />
           </FormField>
           <FormField label="شہر">
-            <UrduNameInput value={city} onChange={setCity} showRomanHelper={false} placeholder="اختیاری" />
+            <UrduNameInput value={city} onChange={setCity} placeholder="اختیاری" />
           </FormField>
         </div>
       </FormModal>
@@ -173,7 +173,7 @@ export default function AreasPage() {
             <UrduNameInput value={editName} onChange={setEditName} required />
           </FormField>
           <FormField label="شہر">
-            <UrduNameInput value={editCity} onChange={setEditCity} showRomanHelper={false} />
+            <UrduNameInput value={editCity} onChange={setEditCity} />
           </FormField>
         </div>
       </FormModal>

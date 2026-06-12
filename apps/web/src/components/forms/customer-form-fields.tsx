@@ -6,6 +6,7 @@ import { QuickAddSelect } from '@/components/forms/quick-add-select';
 import { PresetFieldWithAdd } from '@/components/forms/preset-field-with-add';
 import { FormField } from '@/components/ui/form-section';
 import { UrduNameInput } from '@/components/forms/urdu-name-input';
+import { RomanUrduTextarea } from '@/components/forms/roman-urdu-textarea';
 import { ImageUpload } from '@/components/ui/image-upload';
 import { MultiMobileFields } from '@/components/forms/multi-mobile-fields';
 import type { Area } from '@inventory-urdu/shared';
@@ -71,7 +72,6 @@ export function CustomerFormFields({
           onChange={(name) => patch({ name })}
           required
           autoFocus={autoFocusName}
-          showRomanHelper={false}
           className={compactInputClass}
         />
       </FormField>
@@ -79,7 +79,6 @@ export function CustomerFormFields({
         <UrduNameInput
           value={form.fatherOrHusbandName}
           onChange={(fatherOrHusbandName) => patch({ fatherOrHusbandName })}
-          showRomanHelper={false}
           className={compactInputClass}
         />
       </FormField>
@@ -153,17 +152,17 @@ export function CustomerFormFields({
 
       <SectionTitle>پتہ</SectionTitle>
       <FormField label="موجودہ پتہ" compact className="sm:col-span-2">
-        <textarea
-          className={compactTextareaClass}
+        <RomanUrduTextarea
           value={form.presentAddress}
-          onChange={(e) => patch({ presentAddress: e.target.value })}
+          onChange={(presentAddress) => patch({ presentAddress })}
+          className={compactTextareaClass}
         />
       </FormField>
       <FormField label="مستقل پتہ" compact className="sm:col-span-2">
-        <textarea
-          className={compactTextareaClass}
+        <RomanUrduTextarea
           value={form.permanentAddress}
-          onChange={(e) => patch({ permanentAddress: e.target.value })}
+          onChange={(permanentAddress) => patch({ permanentAddress })}
+          className={compactTextareaClass}
         />
       </FormField>
 

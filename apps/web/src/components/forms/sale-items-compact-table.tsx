@@ -172,7 +172,6 @@ export function SaleItemsCompactTable({
                     value={line.itemName}
                     onChange={(itemName) => updateLine(line.key, { itemName })}
                     placeholder="آئٹم نام"
-                    showRomanHelper={false}
                     className={compactInputClass}
                   />
                 </td>

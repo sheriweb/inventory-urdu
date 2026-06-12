@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { IdentifierFieldInput } from '@/components/forms/identifier-field-input';
+import { MobileImeiActions } from '@/components/forms/mobile-imei-actions';
 import { compactInputClass } from '@/components/forms/customer-form-fields';
 import { cn } from '@/lib/utils';
 import {
@@ -113,6 +114,7 @@ export function SaleItemDetailsEditor({
               fields={presetFields}
               unit={unit}
               compact={compact}
+              saleType={saleType}
               onValueChange={(label, value) => updateValue(unit.unitIndex, label, value)}
             />
           </div>
@@ -126,11 +128,13 @@ function ReceiptFieldGrid({
   unit,
   onValueChange,
   compact,
+  saleType,
 }: {
   fields: ItemIdentifierField[];
   unit: SaleUnitDetailRows;
   onValueChange: (label: string, value: string) => void;
   compact?: boolean;
+  saleType?: ItemSaleType;
 }) {
   return (
     <div className={cn('grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2', compact && 'lg:grid-cols-3')}>
@@ -165,6 +169,9 @@ function ReceiptFieldGrid({
               )}
               required={Boolean(field.required)}
             />
+            {saleType === 'mobile' && field.key === 'imei_1' ? (
+              <MobileImeiActions imei={row?.value ?? ''} compact={compact} />
+            ) : null}
           </div>
         );
       })}

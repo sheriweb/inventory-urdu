@@ -88,7 +88,6 @@ export function GuarantorDetailCard({
               value={guarantor.name}
               onChange={(name) => patch({ name })}
               disabled={disabled}
-              showRomanHelper={false}
               className={fieldClass}
             />
           </FormField>
@@ -97,7 +96,6 @@ export function GuarantorDetailCard({
               value={guarantor.fatherOrHusbandName}
               onChange={(fatherOrHusbandName) => patch({ fatherOrHusbandName })}
               disabled={disabled}
-              showRomanHelper={false}
               className={fieldClass}
             />
           </FormField>

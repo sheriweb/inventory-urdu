@@ -91,6 +91,13 @@ export class RecoveryController {
     return { message: MESSAGES.LIST_FETCHED('Reminder'), data };
   }
 
+  @Get('bulk-payment-messages')
+  @Auth(UserRole.SHOP_OWNER, UserRole.OPERATOR, UserRole.RECOVERY_MAN)
+  async getBulkPaymentMessages(@CurrentUser() user: AuthUser) {
+    const data = await this.recoveryService.listBulkPaymentMessages(user);
+    return { message: MESSAGES.LIST_FETCHED('Bulk payment messages'), data };
+  }
+
   @Post('reminders/:scheduleId/sent')
   @Auth(UserRole.SHOP_OWNER, UserRole.OPERATOR, UserRole.RECOVERY_MAN)
   async markReminderSent(

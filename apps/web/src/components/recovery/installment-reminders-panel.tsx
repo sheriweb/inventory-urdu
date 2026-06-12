@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AxiosError } from 'axios';
 import Link from 'next/link';
-import { MessageCircle, RefreshCw, Settings, Smartphone, SkipForward, X } from 'lucide-react';
+import { MessageCircle, RefreshCw, Settings, Smartphone, SkipForward, X, Zap } from 'lucide-react';
 import api from '@/lib/api';
 import { notify, getApiErrorMessage } from '@/lib/notify';
 import { fmtDate, fmtMoney } from '@/lib/format';
@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertBanner } from '@/components/ui/alert-banner';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { BulkCustomerMessagesPanel } from '@/components/recovery/bulk-customer-messages-panel';
 
 type ReminderRow = {
   scheduleId: string;
@@ -43,6 +44,7 @@ type BulkQueue = {
   channel: 'WHATSAPP' | 'SMS';
   index: number;
   items: ReminderRow[];
+  afterWhatsAppSms?: boolean;
 };
 
 export function InstallmentRemindersPanel() {
@@ -130,20 +132,28 @@ export function InstallmentRemindersPanel() {
     openChannel(row, 'SMS');
   }
 
-  function startBulkQueue(channel: 'WHATSAPP' | 'SMS') {
+  function startBulkQueue(channel: 'WHATSAPP' | 'SMS', afterWhatsAppSms = false) {
     const items = pendingItems.filter((row) => row.customerMobile?.trim());
     if (items.length === 0) {
       notify.error('بھیجنے کے لیے کوئی یاد دہانی نہیں');
       return;
     }
-    setQueue({ channel, index: 0, items });
+    setQueue({ channel, index: 0, items, afterWhatsAppSms });
     openChannel(items[0], channel);
+  }
+
+  function startOneClickReminders() {
+    startBulkQueue('WHATSAPP', true);
   }
 
   async function advanceQueue() {
     if (!queue) return;
     const nextIndex = queue.index + 1;
     if (nextIndex >= queue.items.length) {
+      if (queue.channel === 'WHATSAPP' && queue.afterWhatsAppSms) {
+        startBulkQueue('SMS', false);
+        return;
+      }
       setQueue(null);
       notify.saved('تمام یاد دہانیاں کھول دی گئیں');
       await load();
@@ -259,7 +269,10 @@ export function InstallmentRemindersPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <BulkCustomerMessagesPanel />
+
+      <div className="space-y-4">
       {error ? <AlertBanner onRetry={load}>{error}</AlertBanner> : null}
 
       <Card className="border-sky-100 bg-sky-50/50">
@@ -284,6 +297,16 @@ export function InstallmentRemindersPanel() {
         <div className="flex flex-wrap gap-2">
           {pendingItems.length > 0 ? (
             <>
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5"
+                disabled={Boolean(queue)}
+                onClick={startOneClickReminders}
+              >
+                <Zap className="h-4 w-4" />
+                ایک کلک (WA + SMS)
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -355,6 +378,7 @@ export function InstallmentRemindersPanel() {
           `${row.accountNumber} ${row.customerName} ${row.customerMobile ?? ''}`
         }
       />
+      </div>
     </div>
   );
 }

@@ -45,7 +45,6 @@ export function GuarantorFormFields({ form, onChange, autoFocusName }: Guarantor
           onChange={(name) => patch({ name })}
           required
           autoFocus={autoFocusName}
-          showRomanHelper={false}
           className={compactInputClass}
         />
       </FormField>

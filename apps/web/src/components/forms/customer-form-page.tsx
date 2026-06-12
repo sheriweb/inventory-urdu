@@ -441,7 +441,6 @@ export function CustomerFormPage({
                   onChange={(name) => patch({ name })}
                   required
                   autoFocus={mode === 'create'}
-                  showRomanHelper={false}
                   className={compactInputClass}
                 />
               </FormField>
@@ -449,7 +448,6 @@ export function CustomerFormPage({
                 <UrduNameInput
                   value={form.fatherOrHusbandName}
                   onChange={(fatherOrHusbandName) => patch({ fatherOrHusbandName })}
-                  showRomanHelper={false}
                   className={compactInputClass}
                 />
               </FormField>

@@ -5,6 +5,13 @@ import Link from 'next/link';
 import { Printer } from 'lucide-react';
 import api from '@/lib/api';
 import { notify } from '@/lib/notify';
+import {
+  enqueueOfflineSyncJob,
+  shouldQueueOffline,
+} from '@/lib/offline-sync-queue';
+import {
+  isBrowserOnline,
+} from '@/lib/offline-draft-queue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -283,13 +290,29 @@ export function RecoveryCollectPanel({
     setError('');
     setReceiptNumber(null);
     setLastPaymentId(null);
-    try {
-      const { data } = await api.post('/recovery/collect', {
-        leaseAccountId: lease.id,
-        scheduleId,
-        amount: parsed,
-        note: note.trim() || undefined,
+
+    const payload = {
+      leaseAccountId: lease.id,
+      scheduleId,
+      amount: parsed,
+      note: note.trim() || undefined,
+    };
+
+    if (!isBrowserOnline()) {
+      enqueueOfflineSyncJob('recovery-collect', 'قسط وصولی', {
+        ...payload,
+        accountNumber: lease.accountNumber,
       });
+      setAmount('');
+      setNote('');
+      notify.saved('آف لائن قطار میں — انٹرنیٹ پر خود محفوظ');
+      onSuccess?.();
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const { data } = await api.post('/recovery/collect', payload);
       const payment = data.data?.payment as { id?: string; receiptNumber?: number } | undefined;
       if (payment?.receiptNumber != null) {
         setReceiptNumber(payment.receiptNumber);
@@ -303,6 +326,18 @@ export function RecoveryCollectPanel({
       onSuccess?.();
       notify.saved(`وصولی محفوظ — رسید #${payment?.receiptNumber ?? ''} (روزنامچہ میں)`);
     } catch (err) {
+      if (shouldQueueOffline(err)) {
+        enqueueOfflineSyncJob('recovery-collect', 'قسط وصولی', {
+          ...payload,
+          accountNumber: lease.accountNumber,
+        });
+        setAmount('');
+        setNote('');
+        notify.saved('نیٹ خراب — وصولی قطار میں محفوظ');
+        onSuccess?.();
+        setSubmitting(false);
+        return;
+      }
       setError('وصولی محفوظ نہیں ہو سکی');
       notify.fail('وصولی', err);
     } finally {

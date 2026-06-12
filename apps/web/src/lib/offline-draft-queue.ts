@@ -2,7 +2,7 @@ import type { CustomerFormState } from '@/components/forms/customer-form-fields'
 import type { GuarantorFormState } from '@/components/forms/guarantor-form-state';
 import type { SaleDraft, SaleDraftLine, SaleInstallmentDraft } from '@/lib/sale-draft';
 
-export type OfflineDraftKind = 'customer-create' | 'lease-new';
+export type OfflineDraftKind = 'customer-create' | 'lease-new' | 'roznamcha-entry';
 
 type DraftEnvelope<T> = {
   version: 1;
@@ -52,9 +52,18 @@ export type LeaseNewOfflineDraft = {
   installment: SaleInstallmentDraft;
 };
 
+export type RoznamchaEntryOfflineDraft = {
+  entryDate: string;
+  expenseAccountId: string;
+  detail: string;
+  expenseAmount: string;
+  recoveryAmount: string;
+};
+
 const STORAGE_KEYS: Record<OfflineDraftKind, string> = {
   'customer-create': 'inventory-offline-customer-create-v1',
   'lease-new': 'inventory-offline-lease-new-v1',
+  'roznamcha-entry': 'inventory-offline-roznamcha-entry-v1',
 };
 
 export function isBrowserOnline(): boolean {
@@ -127,6 +136,14 @@ export function leaseDraftHasContent(draft: LeaseNewOfflineDraft): boolean {
   if (draft.note.trim()) return true;
   return draft.itemLines.some(
     (line) => line.itemName.trim() && Number(line.rate) > 0 && Number(line.quantity) > 0,
+  );
+}
+
+export function roznamchaDraftHasContent(draft: RoznamchaEntryOfflineDraft): boolean {
+  return Boolean(
+    draft.detail.trim() ||
+      Number(draft.expenseAmount) > 0 ||
+      Number(draft.recoveryAmount) > 0,
   );
 }
 

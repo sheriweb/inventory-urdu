@@ -19,7 +19,7 @@ import type { CreateLeaseAccountDto } from '@inventory-urdu/shared';
 import { generateId } from '@/lib/generate-id';
 import { notify } from '@/lib/notify';
 
-export type OfflineSyncJobKind = 'customer-create' | 'lease-new';
+export type OfflineSyncJobKind = 'customer-create' | 'lease-new' | 'roznamcha-entry' | 'recovery-collect';
 
 export type CustomerCreateSyncPayload = {
   form: CustomerFormState;
@@ -66,6 +66,22 @@ export type LeaseNewSyncPayload = {
   lease: CreateLeaseAccountDto;
 };
 
+export type RoznamchaEntrySyncPayload = {
+  entryDate: string;
+  expenseAccountId?: string;
+  detail?: string;
+  expenseAmount: number;
+  recoveryAmount: number;
+};
+
+export type RecoveryCollectSyncPayload = {
+  leaseAccountId: string;
+  scheduleId: string;
+  amount: number;
+  note?: string;
+  accountNumber?: number;
+};
+
 export type OfflineSyncJob = {
   id: string;
   kind: OfflineSyncJobKind;
@@ -73,7 +89,11 @@ export type OfflineSyncJob = {
   createdAt: string;
   attempts: number;
   lastError?: string;
-  payload: CustomerCreateSyncPayload | LeaseNewSyncPayload;
+  payload:
+    | CustomerCreateSyncPayload
+    | LeaseNewSyncPayload
+    | RoznamchaEntrySyncPayload
+    | RecoveryCollectSyncPayload;
 };
 
 const STORAGE_KEY = 'inventory-offline-sync-queue-v1';
@@ -126,7 +146,11 @@ export function getOfflineSyncQueueCount(): number {
 export function enqueueOfflineSyncJob(
   kind: OfflineSyncJobKind,
   label: string,
-  payload: CustomerCreateSyncPayload | LeaseNewSyncPayload,
+  payload:
+    | CustomerCreateSyncPayload
+    | LeaseNewSyncPayload
+    | RoznamchaEntrySyncPayload
+    | RecoveryCollectSyncPayload,
 ): OfflineSyncJob {
   const job: OfflineSyncJob = {
     id: generateId(),
@@ -242,6 +266,28 @@ async function executeLeaseNew(job: OfflineSyncJob & { kind: 'lease-new' }) {
   notify.created('کھاتہ (آف لائن قطار)', `کھاتہ #${created.accountNumber ?? ''}`);
 }
 
+async function executeRoznamchaEntry(job: OfflineSyncJob & { kind: 'roznamcha-entry' }) {
+  const payload = job.payload as RoznamchaEntrySyncPayload;
+  await api.post('/roznamcha/entries', payload);
+  clearOfflineDraft('roznamcha-entry');
+  notify.created('روزنامچہ (آف لائن)', 'انٹری محفوظ');
+}
+
+async function executeRecoveryCollect(job: OfflineSyncJob & { kind: 'recovery-collect' }) {
+  const payload = job.payload as RecoveryCollectSyncPayload;
+  const { data } = await api.post('/recovery/collect', {
+    leaseAccountId: payload.leaseAccountId,
+    scheduleId: payload.scheduleId,
+    amount: payload.amount,
+    note: payload.note,
+  });
+  const payment = data?.data?.payment as { receiptNumber?: number } | undefined;
+  notify.created(
+    'وصولی (آف لائن)',
+    `رسید #${payment?.receiptNumber ?? ''}${payload.accountNumber ? ` · کھاتہ ${payload.accountNumber}` : ''}`,
+  );
+}
+
 async function executeJob(job: OfflineSyncJob) {
   if (job.kind === 'customer-create') {
     await executeCustomerCreate(job as OfflineSyncJob & { kind: 'customer-create' });
@@ -249,6 +295,14 @@ async function executeJob(job: OfflineSyncJob) {
   }
   if (job.kind === 'lease-new') {
     await executeLeaseNew(job as OfflineSyncJob & { kind: 'lease-new' });
+    return;
+  }
+  if (job.kind === 'roznamcha-entry') {
+    await executeRoznamchaEntry(job as OfflineSyncJob & { kind: 'roznamcha-entry' });
+    return;
+  }
+  if (job.kind === 'recovery-collect') {
+    await executeRecoveryCollect(job as OfflineSyncJob & { kind: 'recovery-collect' });
     return;
   }
 }

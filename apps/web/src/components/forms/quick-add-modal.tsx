@@ -233,7 +233,7 @@ export function QuickAddModal({ open, onClose, entity, staffType, onCreated }: Q
             <>
               {entity === 'customer' ? (
                 <FormField label="والد/شوہر کا نام">
-                  <UrduNameInput value={fatherOrHusbandName} onChange={setFatherOrHusbandName} showRomanHelper={false} placeholder="اختیاری" />
+                  <UrduNameInput value={fatherOrHusbandName} onChange={setFatherOrHusbandName} placeholder="اختیاری" />
                 </FormField>
               ) : null}
               <FormField label="موبائل">

@@ -923,10 +923,10 @@ export default function NewLeasePage() {
                 </FormField>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <FormField label="نام" compact>
-                    <UrduNameInput value={customerName} onChange={setCustomerName} disabled={!customerId} showRomanHelper={false} className={fieldClass} />
+                    <UrduNameInput value={customerName} onChange={setCustomerName} disabled={!customerId} className={fieldClass} />
                   </FormField>
                   <FormField label="والد / شوہر نام" compact>
-                    <UrduNameInput value={customerFatherName} onChange={setCustomerFatherName} disabled={!customerId} showRomanHelper={false} className={fieldClass} />
+                    <UrduNameInput value={customerFatherName} onChange={setCustomerFatherName} disabled={!customerId} className={fieldClass} />
                   </FormField>
                   <FormField label="شناختی کارڈ نمبر" compact>
                     <InputWithVoice

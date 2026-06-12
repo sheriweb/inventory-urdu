@@ -4,6 +4,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import api from '@/lib/api';
 import { asArray, recordFromResponse } from '@/lib/api-response';
+import {
+  clearOfflineDraft,
+  isBrowserOnline,
+  loadOfflineDraft,
+  roznamchaDraftHasContent,
+  saveOfflineDraft,
+  type RoznamchaEntryOfflineDraft,
+} from '@/lib/offline-draft-queue';
+import {
+  enqueueOfflineSyncJob,
+  shouldQueueOffline,
+} from '@/lib/offline-sync-queue';
+import { useOfflineDraftAutosave } from '@/hooks/use-offline-draft-autosave';
+import { OfflineDraftRestoreBanner } from '@/components/pwa/offline-draft-restore-banner';
+import { RomanUrduTextarea } from '@/components/forms/roman-urdu-textarea';
 import { notify } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -107,6 +122,14 @@ export default function RoznamchaRegisterPage() {
   const [accounts, setAccounts] = useState<ExpenseAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [restoreOffer, setRestoreOffer] = useState<{ savedAt: string; data: RoznamchaEntryOfflineDraft } | null>(null);
+
+  useOfflineDraftAutosave({
+    kind: 'roznamcha-entry',
+    data: entryForm,
+    enabled: addOpen && !restoreOffer,
+    hasContent: (d) => roznamchaDraftHasContent(d),
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -160,26 +183,62 @@ export default function RoznamchaRegisterPage() {
   }
 
   function openAdd() {
+    const saved = loadOfflineDraft<RoznamchaEntryOfflineDraft>('roznamcha-entry');
+    if (saved && roznamchaDraftHasContent(saved.data)) {
+      setRestoreOffer({ savedAt: saved.savedAt, data: saved.data });
+    }
     setEntryForm({ ...emptyEntry, entryDate: todayInputValue() });
     setAddOpen(true);
     if (accounts.length === 0) loadAccounts();
   }
 
+  function applyRestore() {
+    if (!restoreOffer) return;
+    setEntryForm(restoreOffer.data);
+    setRestoreOffer(null);
+    notify.saved('آف لائن ڈرافٹ بحال');
+  }
+
+  function discardRestore() {
+    clearOfflineDraft('roznamcha-entry');
+    setRestoreOffer(null);
+  }
+
   async function onAddEntry() {
     setSubmitting(true);
     setError('');
+    const payload = {
+      entryDate: entryForm.entryDate,
+      expenseAccountId: entryForm.expenseAccountId || undefined,
+      detail: entryForm.detail || undefined,
+      expenseAmount: entryForm.expenseAmount ? parseFloat(entryForm.expenseAmount) : 0,
+      recoveryAmount: entryForm.recoveryAmount ? parseFloat(entryForm.recoveryAmount) : 0,
+    };
+
+    if (!isBrowserOnline()) {
+      enqueueOfflineSyncJob('roznamcha-entry', 'روزنامچہ انٹری', payload);
+      clearOfflineDraft('roznamcha-entry');
+      setAddOpen(false);
+      notify.saved('آف لائن قطار میں — انٹرنیٹ پر خود محفوظ');
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      await api.post('/roznamcha/entries', {
-        entryDate: entryForm.entryDate,
-        expenseAccountId: entryForm.expenseAccountId || undefined,
-        detail: entryForm.detail || undefined,
-        expenseAmount: entryForm.expenseAmount ? parseFloat(entryForm.expenseAmount) : 0,
-        recoveryAmount: entryForm.recoveryAmount ? parseFloat(entryForm.recoveryAmount) : 0,
-      });
+      await api.post('/roznamcha/entries', payload);
+      clearOfflineDraft('roznamcha-entry');
       setAddOpen(false);
       await load();
       notify.created('روزنامچہ انٹری');
     } catch (err) {
+      if (shouldQueueOffline(err)) {
+        enqueueOfflineSyncJob('roznamcha-entry', 'روزنامچہ انٹری', payload);
+        clearOfflineDraft('roznamcha-entry');
+        setAddOpen(false);
+        notify.saved('نیٹ خراب — قطار میں محفوظ');
+        setSubmitting(false);
+        return;
+      }
       setError('انٹری محفوظ نہیں ہو سکی');
       notify.fail('انٹری محفوظ', err);
     } finally {
@@ -314,6 +373,14 @@ export default function RoznamchaRegisterPage() {
         submitLabel="محفوظ کریں"
         formId="roznamcha-entry-form"
       >
+        {restoreOffer ? (
+          <OfflineDraftRestoreBanner
+            label="آف لائن روزنامچہ ڈرافٹ"
+            savedAt={restoreOffer.savedAt}
+            onRestore={applyRestore}
+            onDiscard={discardRestore}
+          />
+        ) : null}
         {accountsLoading ? (
           <p className="py-6 text-center text-sm text-slate-500">لوڈ ہو رہا ہے…</p>
         ) : (
@@ -329,7 +396,12 @@ export default function RoznamchaRegisterPage() {
               />
             </FormField>
             <FormField label="تفصیل">
-              <Input value={entryForm.detail} onChange={(e) => setEntryForm({ ...entryForm, detail: e.target.value })} />
+              <RomanUrduTextarea
+                value={entryForm.detail}
+                onChange={(detail) => setEntryForm({ ...entryForm, detail })}
+                rows={2}
+                className="flex min-h-[2.75rem] w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs"
+              />
             </FormField>
             <FormField label="خرچہ اکاؤنٹ" className="sm:col-span-2">
               <QuickAddSelect
