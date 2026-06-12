@@ -28,7 +28,8 @@ const apiLockDir = path.join(tmpDir, 'api-boot.dir');
 const apiScheduleDir = path.join(tmpDir, 'api-schedule.dir');
 const apiLogPath = path.join(tmpDir, 'api.log');
 const modulesDir = path.join(root, 'node_modules');
-const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 20_000);
+const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 2_000);
+const API_WATCHDOG_INTERVAL_MS = Number(process.env.API_WATCHDOG_INTERVAL_MS || 30_000);
 const startApiOnBoot = process.env.START_API_ON_BOOT !== '0';
 
 function logLine(message) {
@@ -116,15 +117,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForPort(port, host = '127.0.0.1', maxMs = 120_000, intervalMs = 2000) {
-  const deadline = Date.now() + maxMs;
-  while (Date.now() < deadline) {
-    if (await isPortOpen(port, host)) return true;
-    await sleep(intervalMs);
-  }
-  return false;
-}
-
 async function startNextServer(webPort) {
   const nextPkg = path.join(modulesDir, 'next');
   if (!existsSync(nextPkg)) {
@@ -168,46 +160,54 @@ async function startNextServer(webPort) {
   });
 }
 
+async function ensureApiRunning(apiPort, apiEnv, label) {
+  if (await isPortOpen(apiPort)) return true;
+
+  // Lock is per-attempt: clear it so a previously crashed API can be relaunched.
+  try {
+    rmSync(apiLockDir, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
+
+  logLine(`${label}: starting API on 127.0.0.1:${apiPort}…`);
+  startApiDetached(apiEnv);
+
+  for (let i = 0; i < 15; i += 1) {
+    await sleep(2000);
+    if (await isPortOpen(apiPort)) {
+      logLine(`API ready on 127.0.0.1:${apiPort}`);
+      return true;
+    }
+  }
+
+  logLine(`WARNING: API still not on 127.0.0.1:${apiPort} after 30s — check tmp/api.log`);
+  return false;
+}
+
 async function scheduleApiStart(webPort, apiPort, apiEnv) {
   try {
     mkdirSync(apiScheduleDir);
   } catch {
-    logLine('API start already scheduled by another worker');
+    logLine('API supervisor already running in another worker');
     return;
-  }
-
-  const webReady = await waitForPort(webPort);
-  if (webReady) {
-    logLine(`Web listening on ${webPort} — API will start in ${API_START_DELAY_MS}ms`);
-  } else {
-    logLine(`Web port ${webPort} not confirmed — API will start after ${API_START_DELAY_MS}ms delay`);
   }
 
   await sleep(API_START_DELAY_MS);
+  await ensureApiRunning(apiPort, apiEnv, 'boot');
 
-  if (await isPortOpen(apiPort)) {
-    logLine(`API already on 127.0.0.1:${apiPort}`);
-    return;
-  }
-
-  logLine(`Starting API on 127.0.0.1:${apiPort}…`);
-  startApiDetached(apiEnv);
-  await sleep(12_000);
-
-  if (await isPortOpen(apiPort)) {
-    logLine(`API ready on 127.0.0.1:${apiPort}`);
-    return;
-  }
-
-  logLine('API not listening after 12s — retry once');
-  startApiDetached(apiEnv);
-  await sleep(12_000);
-
-  if (await isPortOpen(apiPort)) {
-    logLine(`API ready on 127.0.0.1:${apiPort} (after retry)`);
-  } else {
-    logLine(`WARNING: API still not on 127.0.0.1:${apiPort} — check tmp/api.log`);
-  }
+  // Watchdog: web process is long-lived under Passenger; if the API dies
+  // (memory kill, crash), bring it back without waiting for a redeploy.
+  let checking = false;
+  setInterval(() => {
+    if (checking) return;
+    checking = true;
+    ensureApiRunning(apiPort, apiEnv, 'watchdog')
+      .catch((err) => logLine(`watchdog error: ${err?.message || err}`))
+      .finally(() => {
+        checking = false;
+      });
+  }, API_WATCHDOG_INTERVAL_MS).unref();
 }
 
 function startApiDetached(apiEnv) {
