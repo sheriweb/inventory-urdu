@@ -40,7 +40,7 @@ export NODE_ENV=production
 export HOSTINGER_COMBINED=1
 export LAZY_DB_CONNECT=1
 export UV_THREADPOOL_SIZE=2
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=256}"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=192}"
 
 pkill -f "$ROOT/apps/api/dist/main.js" 2>/dev/null || true
 sleep 2

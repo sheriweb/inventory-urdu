@@ -26,8 +26,9 @@ done
 export NODE_ENV=production
 export HOSTINGER_COMBINED=1
 export INTERNAL_API_URL="${INTERNAL_API_URL:-http://127.0.0.1:4001}"
-export WEB_NODE_OPTIONS="${WEB_NODE_OPTIONS:---max-old-space-size=384}"
+export WEB_NODE_OPTIONS="${WEB_NODE_OPTIONS:---max-old-space-size=256}"
 export NODE_OPTIONS="$WEB_NODE_OPTIONS"
+export API_NODE_OPTIONS="${API_NODE_OPTIONS:---max-old-space-size=192}"
 PORT="${PORT:-${PASSENGER_PORT:-3000}}"
 
 if [[ ! -f "$ROOT/apps/api/dist/main.js" ]]; then
