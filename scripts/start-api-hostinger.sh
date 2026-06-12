@@ -2,6 +2,7 @@
 # Start Nest API once on Hostinger (flock + Node 20, low thread pool).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "$ROOT/tmp"
 ENV_FILE="$ROOT/tmp/api.env"
 LOG="$ROOT/tmp/api.log"
 LOCK="$ROOT/tmp/api.lock"
