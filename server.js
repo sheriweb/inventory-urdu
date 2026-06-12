@@ -27,6 +27,8 @@ const webBootDir = path.join(tmpDir, 'web-boot.dir');
 const apiLockDir = path.join(tmpDir, 'api-boot.dir');
 const apiScheduleDir = path.join(tmpDir, 'api-schedule.dir');
 const apiLogPath = path.join(tmpDir, 'api.log');
+const apiPidPath = path.join(tmpDir, 'api.pid');
+const apiStampPath = path.join(tmpDir, 'api.stamp');
 const modulesDir = path.join(root, 'node_modules');
 const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 2_000);
 const API_WATCHDOG_INTERVAL_MS = Number(process.env.API_WATCHDOG_INTERVAL_MS || 30_000);
@@ -160,8 +162,59 @@ async function startNextServer(webPort) {
   });
 }
 
+function apiDistStamp() {
+  try {
+    return String(require('node:fs').statSync(path.join(apiDir, 'dist/main.js')).mtimeMs);
+  } catch {
+    return '';
+  }
+}
+
+function readFileTrim(filePath) {
+  try {
+    return readFileSync(filePath, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+async function stopOutdatedApi(apiPort, label) {
+  const currentStamp = apiDistStamp();
+  const runningStamp = readFileTrim(apiStampPath);
+  if (currentStamp && runningStamp === currentStamp) return false;
+
+  logLine(`${label}: API on ${apiPort} runs old build (stamp ${runningStamp || 'unknown'} != ${currentStamp}) — restarting`);
+  const pid = Number(readFileTrim(apiPidPath));
+  if (pid && isPidAlive(pid)) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      /* ignore */
+    }
+  }
+  // Fallback for API processes we did not record (older deploys).
+  try {
+    spawn('pkill', ['-f', 'apps/api/dist/main.js'], { stdio: 'ignore' });
+  } catch {
+    /* ignore */
+  }
+
+  for (let i = 0; i < 10; i += 1) {
+    await sleep(1000);
+    if (!(await isPortOpen(apiPort))) break;
+  }
+  return true;
+}
+
 async function ensureApiRunning(apiPort, apiEnv, label) {
-  if (await isPortOpen(apiPort)) return true;
+  if (await isPortOpen(apiPort)) {
+    const restarted = await stopOutdatedApi(apiPort, label);
+    if (!restarted) return true;
+    if (await isPortOpen(apiPort)) {
+      logLine(`${label}: old API still holding ${apiPort} — will retry on next watchdog tick`);
+      return false;
+    }
+  }
 
   // Lock is per-attempt: clear it so a previously crashed API can be relaunched.
   try {
@@ -268,6 +321,12 @@ function startApiDetached(apiEnv) {
     } catch {
       /* ignore */
     }
+  }
+  try {
+    writeFileSync(apiPidPath, String(child.pid ?? ''));
+    writeFileSync(apiStampPath, apiDistStamp());
+  } catch {
+    /* ignore */
   }
   logLine(`API process spawned pid=${child.pid ?? 'unknown'} on 127.0.0.1:${apiPort}`);
 }
