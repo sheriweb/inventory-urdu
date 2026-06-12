@@ -2,14 +2,11 @@
 /**
  * Hostinger hPanel entry file: server.js
  *
- * Proven bootstrap (pre-standalone): one Passenger process runs Next.js HTTP
- * server from apps/web/.next — NOT the standalone bundle (that caused crash loops).
+ * One Passenger process runs `next start` from apps/web/.next.
+ * Bootstrap lock + delayed API avoid duplicate PORT binds and process-limit crashes.
  */
 const { spawn } = require('node:child_process');
-const { createReadStream, statSync } = require('node:fs');
-const { createServer } = require('node:http');
 const net = require('node:net');
-const { parse } = require('node:url');
 const {
   appendFileSync,
   chmodSync,
@@ -17,18 +14,17 @@ const {
   mkdirSync,
   readFileSync,
   readdirSync,
+  unlinkSync,
   writeFileSync,
 } = require('node:fs');
 const path = require('node:path');
-const { createRequire } = require('node:module');
-
-const requireFromRoot = createRequire(__filename);
 
 const root = path.resolve(__dirname);
 const apiDir = path.join(root, 'apps/api');
 const webDir = path.join(root, 'apps/web');
 const tmpDir = path.join(root, 'tmp');
 const logPath = path.join(tmpDir, 'hostinger.log');
+const bootstrapLockPath = path.join(tmpDir, 'web-bootstrap.lock');
 const maintenanceFlag = path.join(root, '.maintenance');
 const node = process.execPath;
 const apiNode =
@@ -37,18 +33,7 @@ const apiNode =
     ? '/opt/alt/alt-nodejs20/root/bin/node'
     : node);
 const modulesDir = path.join(root, 'node_modules');
-
-const MIME = {
-  '.js': 'application/javascript; charset=UTF-8',
-  '.css': 'text/css; charset=UTF-8',
-  '.woff2': 'font/woff2',
-  '.woff': 'font/woff',
-  '.json': 'application/json; charset=UTF-8',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-};
+const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 120_000);
 
 function loadDotEnv(filePath) {
   try {
@@ -108,6 +93,10 @@ function fixPrismaEnginePermissions(dir) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function isPortOpen(port, host = '127.0.0.1') {
   return new Promise((resolve) => {
     const socket = net.createConnection({ port: Number(port), host }, () => {
@@ -120,6 +109,69 @@ function isPortOpen(port, host = '127.0.0.1') {
       resolve(false);
     });
   });
+}
+
+function isPidAlive(pid) {
+  if (!pid || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireBootstrapLock() {
+  try {
+    writeFileSync(bootstrapLockPath, `${process.pid}\n${Date.now()}`, { flag: 'wx' });
+    return true;
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+    try {
+      const [pidLine] = readFileSync(bootstrapLockPath, 'utf8').split('\n');
+      if (isPidAlive(Number(pidLine))) return false;
+    } catch {
+      /* stale lock file */
+    }
+    try {
+      unlinkSync(bootstrapLockPath);
+    } catch {
+      return false;
+    }
+    return acquireBootstrapLock();
+  }
+}
+
+async function ensureSingleWebBoot(webPort) {
+  if (await isPortOpen(webPort, '127.0.0.1')) {
+    logLine(`PORT ${webPort} already listening — duplicate worker exits`);
+    process.exit(0);
+  }
+
+  if (acquireBootstrapLock()) {
+    return;
+  }
+
+  logLine('Another web boot in progress — waiting for PORT…');
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    await sleep(1000);
+    if (await isPortOpen(webPort, '127.0.0.1')) {
+      logLine(`PORT ${webPort} is up — duplicate worker exits`);
+      process.exit(0);
+    }
+  }
+
+  logLine('Bootstrap lock stale — taking over web boot');
+  try {
+    unlinkSync(bootstrapLockPath);
+  } catch {
+    logLine('Could not take bootstrap lock — exit');
+    process.exit(1);
+  }
+  if (!acquireBootstrapLock()) {
+    logLine('Failed to acquire bootstrap lock after stale takeover — exit');
+    process.exit(1);
+  }
 }
 
 function startApiDetached(apiEnv) {
@@ -156,26 +208,6 @@ function loadProductionEnv() {
   return merged;
 }
 
-function safeFileUnderRoot(rootDir, relPath) {
-  const filePath = path.normalize(path.join(rootDir, relPath));
-  if (!filePath.startsWith(path.normalize(`${rootDir}${path.sep}`))) return null;
-  if (!existsSync(filePath)) return null;
-  try {
-    if (!statSync(filePath).isFile()) return null;
-  } catch {
-    return null;
-  }
-  return filePath;
-}
-
-function sendFile(res, filePath, cacheControl) {
-  const ext = path.extname(filePath).toLowerCase();
-  res.statusCode = 200;
-  res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
-  res.setHeader('Cache-Control', cacheControl);
-  createReadStream(filePath).pipe(res);
-}
-
 process.on('uncaughtException', (err) => {
   logLine(`uncaughtException: ${err?.stack || err}`);
   process.exit(1);
@@ -183,6 +215,16 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (err) => {
   logLine(`unhandledRejection: ${err?.stack || err}`);
   process.exit(1);
+});
+process.on('exit', () => {
+  if (existsSync(bootstrapLockPath)) {
+    try {
+      const [pidLine] = readFileSync(bootstrapLockPath, 'utf8').split('\n');
+      if (Number(pidLine) === process.pid) unlinkSync(bootstrapLockPath);
+    } catch {
+      /* ignore */
+    }
+  }
 });
 
 loadProductionEnv();
@@ -207,6 +249,8 @@ if (existsSync(maintenanceFlag)) {
   process.exit(1);
 } else {
   (async () => {
+    await ensureSingleWebBoot(webPort);
+
     const fileEnv = loadProductionEnv();
     const nodePath = [modulesDir, path.join(apiDir, 'node_modules'), path.join(webDir, 'node_modules')]
       .filter((p) => existsSync(p))
@@ -223,7 +267,7 @@ if (existsSync(maintenanceFlag)) {
       PORT: apiPort,
       API_PORT: apiPort,
       NODE_ENV: 'production',
-      NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=256',
+      NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=192',
       NODE_PATH: nodePath,
       SKIP_DB_PUSH_ON_START: '1',
     };
@@ -236,61 +280,23 @@ if (existsSync(maintenanceFlag)) {
       HOSTINGER_COMBINED: '1',
       INTERNAL_API_URL: `http://127.0.0.1:${apiPort}`,
       NODE_ENV: 'production',
-      NODE_OPTIONS: process.env.WEB_NODE_OPTIONS || '--max-old-space-size=384',
+      NODE_OPTIONS: process.env.WEB_NODE_OPTIONS || '--max-old-space-size=256',
       NODE_PATH: nodePath,
     };
 
     Object.assign(process.env, webEnv);
 
-    logLine(`Preparing Next.js from ${webDir} on port ${webPort}…`);
+    const nextBin = path.join(modulesDir, 'next/dist/bin/next');
+    if (!existsSync(nextBin)) {
+      logLine(`FATAL: next binary missing at ${nextBin}`);
+      process.exit(1);
+    }
 
-    const next = requireFromRoot('next');
-    const nextApp = next({ dev: false, dir: webDir });
-    await nextApp.prepare();
-    const handle = nextApp.getRequestHandler();
-
-    const staticRoot = path.join(webDir, '.next/static');
-    const publicRoot = path.join(webDir, 'public');
-
-    const server = createServer((req, res) => {
-      try {
-        const parsed = parse(req.url, true);
-        const pathname = parsed.pathname || '/';
-
-        if (pathname.startsWith('/_next/static/')) {
-          const rel = pathname.slice('/_next/static/'.length);
-          const filePath = safeFileUnderRoot(staticRoot, rel);
-          if (filePath) {
-            sendFile(res, filePath, 'public, max-age=31536000, immutable');
-            return;
-          }
-        }
-
-        const publicFile = safeFileUnderRoot(publicRoot, pathname.replace(/^\//, ''));
-        if (
-          publicFile &&
-          (pathname === '/manifest.json' ||
-            pathname === '/icon.svg' ||
-            pathname === '/favicon.ico' ||
-            pathname.startsWith('/icons/'))
-        ) {
-          sendFile(res, publicFile, 'public, max-age=86400');
-          return;
-        }
-
-        handle(req, res, parsed);
-      } catch (err) {
-        logLine(`Request error: ${err}`);
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.end('Internal Server Error');
-        }
-      }
-    });
-
-    server.listen(Number(webPort), '0.0.0.0', () => {
-      logLine(`Listening on http://0.0.0.0:${webPort}`);
-    });
+    try {
+      writeFileSync(path.join(tmpDir, 'restart.txt'), String(Date.now()));
+    } catch {
+      /* ignore */
+    }
 
     if (process.env.START_API_ON_BOOT !== '0') {
       setTimeout(async () => {
@@ -298,10 +304,15 @@ if (existsSync(maintenanceFlag)) {
           logLine(`API already on 127.0.0.1:${apiPort}`);
           return;
         }
-        logLine(`Starting API on 127.0.0.1:${apiPort}…`);
+        logLine(`Starting API on 127.0.0.1:${apiPort} (delayed ${API_START_DELAY_MS}ms)…`);
         startApiDetached(apiEnv);
-      }, 500);
+      }, API_START_DELAY_MS);
     }
+
+    logLine(`Starting next start on 0.0.0.0:${webPort} from ${webDir}…`);
+    process.chdir(webDir);
+    process.argv = [process.argv[0], nextBin, 'start', '-p', String(webPort), '-H', '0.0.0.0'];
+    require(nextBin);
   })().catch((err) => {
     logLine(`FATAL boot error: ${err?.stack || err}`);
     process.exit(1);
