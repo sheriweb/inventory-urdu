@@ -137,7 +137,7 @@ async function ensureSingleWebBoot(webPort) {
 
   if (existsSync(webBootDir)) {
     const oldPid = Number(readFileSync(path.join(webBootDir, 'pid'), 'utf8').trim() || '0');
-    if (isPidAlive(oldPid)) {
+    if (isPidAlive(oldPid) && (await isPortOpen(webPort, '127.0.0.1'))) {
       logLine(`Web boot already running (pid ${oldPid}) — duplicate worker exits`);
       process.exit(0);
     }

@@ -53,7 +53,7 @@ fi
 WEB_BOOT_DIR="$ROOT/tmp/web-boot.dir"
 if [[ -d "$WEB_BOOT_DIR" ]]; then
   old_pid="$(cat "$WEB_BOOT_DIR/pid" 2>/dev/null || echo 0)"
-  if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+  if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null && (echo >/dev/tcp/127.0.0.1/"$PORT") 2>/dev/null; then
     log "Web boot already running (pid $old_pid) — duplicate worker exits"
     exit 0
   fi
