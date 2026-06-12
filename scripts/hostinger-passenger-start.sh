@@ -30,6 +30,8 @@ export WEB_NODE_OPTIONS="${WEB_NODE_OPTIONS:---max-old-space-size=256}"
 export NODE_OPTIONS="$WEB_NODE_OPTIONS"
 export API_NODE_OPTIONS="${API_NODE_OPTIONS:---max-old-space-size=192}"
 PORT="${PORT:-${PASSENGER_PORT:-3000}}"
+export PORT
+export HOSTNAME="${HOSTNAME:-0.0.0.0}"
 
 if [[ ! -f "$ROOT/apps/api/dist/main.js" ]]; then
   log "FATAL: apps/api/dist/main.js missing"
@@ -40,8 +42,11 @@ if [[ ! -f "$WEB/.next/BUILD_ID" ]]; then
   exit 1
 fi
 
-# API in background — do not block web boot
-bash "$ROOT/scripts/start-api-hostinger.sh" >>"$LOG" 2>&1 &
+# API thori dair baad — boot par processes kam (Hostinger 120 limit)
+(
+  sleep 45
+  bash "$ROOT/scripts/start-api-hostinger.sh" >>"$LOG" 2>&1
+) &
 
 STANDALONE_SERVER="$WEB/.next/standalone/apps/web/server.js"
 if [[ -f "$STANDALONE_SERVER" ]]; then
