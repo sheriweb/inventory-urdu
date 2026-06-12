@@ -108,6 +108,10 @@ function fixPrismaEnginePermissions(dir) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function startApiDetached(apiEnv) {
   const apiNode =
     process.env.API_NODE_BIN ||
