@@ -26,15 +26,22 @@
 
 See `deploy/hostinger-production.env.example`
 
-**Pehli stable deploy ke liye:**
+**Pehli stable deploy ke liye (optional — API ab default ON hai):**
 ```
 START_API_ON_BOOT=0
 ```
-Site pages khulengi; login API band rahega. Jab web stable ho, phir:
+Sirf web test ke liye. Normal production mein variable mat rakhein ya:
 ```
 START_API_ON_BOOT=1
-API_START_DELAY_MS=180000
+API_START_DELAY_MS=20000
 ```
+Web `Ready` ke ~20–40 sec baad API port `4001` par start honi chahiye. Logs:
+```
+Web listening on 3000 — API will start in 20000ms
+Starting API on 127.0.0.1:4001…
+API ready on 127.0.0.1:4001
+```
+Agar `START_API_ON_BOOT=0` ho to login par `ECONNREFUSED 127.0.0.1:4001` aayega.
 
 ---
 

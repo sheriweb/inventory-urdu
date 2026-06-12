@@ -23,9 +23,12 @@ const apiDir = path.join(root, 'apps/api');
 const tmpDir = path.join(root, 'tmp');
 const logPath = path.join(tmpDir, 'hostinger.log');
 const webBootDir = path.join(tmpDir, 'web-boot.dir');
+const apiLockDir = path.join(tmpDir, 'api-boot.dir');
 const apiScheduleDir = path.join(tmpDir, 'api-schedule.dir');
+const apiLogPath = path.join(tmpDir, 'api.log');
 const modulesDir = path.join(root, 'node_modules');
-const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 180_000);
+const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 20_000);
+const startApiOnBoot = process.env.START_API_ON_BOOT !== '0';
 
 function logLine(message) {
   const line = `[${new Date().toISOString()}] [hostinger] ${message}`;
@@ -112,25 +115,125 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForPort(port, host = '127.0.0.1', maxMs = 120_000, intervalMs = 2000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if (await isPortOpen(port, host)) return true;
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
+async function scheduleApiStart(webPort, apiPort, apiEnv) {
+  try {
+    mkdirSync(apiScheduleDir);
+  } catch {
+    logLine('API start already scheduled by another worker');
+    return;
+  }
+
+  const webReady = await waitForPort(webPort);
+  if (webReady) {
+    logLine(`Web listening on ${webPort} — API will start in ${API_START_DELAY_MS}ms`);
+  } else {
+    logLine(`Web port ${webPort} not confirmed — API will start after ${API_START_DELAY_MS}ms delay`);
+  }
+
+  await sleep(API_START_DELAY_MS);
+
+  if (await isPortOpen(apiPort)) {
+    logLine(`API already on 127.0.0.1:${apiPort}`);
+    return;
+  }
+
+  logLine(`Starting API on 127.0.0.1:${apiPort}…`);
+  startApiDetached(apiEnv);
+  await sleep(12_000);
+
+  if (await isPortOpen(apiPort)) {
+    logLine(`API ready on 127.0.0.1:${apiPort}`);
+    return;
+  }
+
+  logLine('API not listening after 12s — retry once');
+  startApiDetached(apiEnv);
+  await sleep(12_000);
+
+  if (await isPortOpen(apiPort)) {
+    logLine(`API ready on 127.0.0.1:${apiPort} (after retry)`);
+  } else {
+    logLine(`WARNING: API still not on 127.0.0.1:${apiPort} — check tmp/api.log`);
+  }
+}
+
 function startApiDetached(apiEnv) {
+  try {
+    mkdirSync(apiLockDir);
+  } catch (err) {
+    if (err.code === 'EEXIST') {
+      logLine('API boot lock held — skip duplicate start');
+      return;
+    }
+    throw err;
+  }
+
   const apiNode =
     process.env.API_NODE_BIN ||
     (existsSync('/opt/alt/alt-nodejs20/root/bin/node')
       ? '/opt/alt/alt-nodejs20/root/bin/node'
       : process.execPath);
-  apiEnv.HOSTINGER_COMBINED = '1';
-  apiEnv.LAZY_DB_CONNECT = '1';
-  apiEnv.UV_THREADPOOL_SIZE = '2';
-  apiEnv.API_NODE_BIN = apiNode;
-  apiEnv.SKIP_DB_PUSH_ON_START = '1';
-  writeEnvFile(path.join(tmpDir, 'api.env'), apiEnv);
-  const startScript = path.join(root, 'scripts/start-api-hostinger.sh');
-  chmodSync(startScript, 0o755);
-  spawn('/bin/bash', [startScript], {
-    env: { ...apiEnv, PATH: process.env.PATH || '/usr/bin:/bin', HOME: process.env.HOME || root },
+  const apiPort = apiEnv.PORT || apiEnv.API_PORT || '4001';
+  const mergedEnv = {
+    ...process.env,
+    ...apiEnv,
+    HOSTINGER_COMBINED: '1',
+    LAZY_DB_CONNECT: '1',
+    UV_THREADPOOL_SIZE: '2',
+    SKIP_DB_PUSH_ON_START: '1',
+    NODE_ENV: 'production',
+    PORT: String(apiPort),
+    API_PORT: String(apiPort),
+    NODE_OPTIONS: apiEnv.NODE_OPTIONS || process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
+  };
+  writeEnvFile(path.join(tmpDir, 'api.env'), mergedEnv);
+
+  try {
+    appendFileSync(apiLogPath, `[${new Date().toISOString()}] API starting on 127.0.0.1:${apiPort} node=${apiNode}\n`);
+  } catch {
+    /* ignore */
+  }
+
+  const logFd = (() => {
+    try {
+      return require('node:fs').openSync(apiLogPath, 'a');
+    } catch {
+      return 'ignore';
+    }
+  })();
+
+  const child = spawn(apiNode, [path.join(apiDir, 'dist/main.js')], {
+    cwd: root,
+    env: mergedEnv,
     detached: true,
-    stdio: 'ignore',
-  }).unref();
+    stdio: ['ignore', logFd, logFd],
+  });
+  child.unref();
+  if (typeof logFd === 'number') {
+    try {
+      require('node:fs').closeSync(logFd);
+    } catch {
+      /* ignore */
+    }
+  }
+  logLine(`API process spawned pid=${child.pid ?? 'unknown'} on 127.0.0.1:${apiPort}`);
+}
+
+function readLockPid(lockDir) {
+  try {
+    return Number(readFileSync(path.join(lockDir, 'pid'), 'utf8').trim());
+  } catch {
+    return 0;
+  }
 }
 
 async function ensureSingleWebBoot(webPort) {
@@ -148,7 +251,8 @@ async function ensureSingleWebBoot(webPort) {
       if (err.code !== 'EEXIST') throw err;
     }
 
-    for (let i = 0; i < 20; i += 1) {
+    // Lock exists — wait briefly for the owner to bring the port up.
+    for (let i = 0; i < 6; i += 1) {
       await sleep(500);
       if (await isPortOpen(webPort, '127.0.0.1')) {
         logLine(`PORT ${webPort} is up — duplicate worker exits`);
@@ -156,16 +260,35 @@ async function ensureSingleWebBoot(webPort) {
       }
     }
 
+    // Port still closed: lock is stale if its owner pid is dead (app restart).
+    const ownerPid = readLockPid(webBootDir);
+    if (ownerPid && isPidAlive(ownerPid)) {
+      logLine(`Boot lock held by live pid ${ownerPid} — duplicate worker exits`);
+      process.exit(0);
+    }
+
+    logLine(`Stale web boot lock (pid ${ownerPid || 'unknown'} dead) — taking over`);
     try {
       rmSync(webBootDir, { recursive: true, force: true });
     } catch {
-      logLine('Boot lock busy — duplicate worker exits');
-      process.exit(0);
+      /* next mkdir attempt decides */
     }
   }
 
   logLine('Could not acquire web boot lock — duplicate worker exits');
   process.exit(0);
+}
+
+function clearStaleApiState() {
+  // We are the primary web worker of a fresh boot generation: previous
+  // scheduler timers died with their process, so reset scheduling locks.
+  for (const dir of [apiScheduleDir, apiLockDir]) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 process.on('uncaughtException', (err) => {
@@ -214,6 +337,7 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
 
 (async () => {
   await ensureSingleWebBoot(webPort);
+  clearStaleApiState();
 
   const nodePath = [modulesDir, path.join(apiDir, 'node_modules'), path.join(webDir, 'node_modules')]
     .filter((p) => existsSync(p))
@@ -226,33 +350,25 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
     /* ignore */
   }
 
-  if (process.env.START_API_ON_BOOT === '1') {
-    try {
-      mkdirSync(apiScheduleDir);
-      const apiEnv = {
-        PATH: process.env.PATH || '/usr/bin:/bin',
-        HOME: process.env.HOME,
-        LANG: process.env.LANG || 'en_US.UTF-8',
-        DATABASE_URL: process.env.DATABASE_URL,
-        JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
-        JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
-        PORT: apiPort,
-        API_PORT: apiPort,
-        NODE_ENV: 'production',
-        NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
-        NODE_PATH: nodePath,
-      };
-      setTimeout(async () => {
-        if (await isPortOpen(apiPort)) {
-          logLine(`API already on 127.0.0.1:${apiPort}`);
-          return;
-        }
-        logLine(`Starting API on 127.0.0.1:${apiPort} (delay ${API_START_DELAY_MS}ms)…`);
-        startApiDetached(apiEnv);
-      }, API_START_DELAY_MS);
-    } catch {
-      logLine('API start already scheduled');
-    }
+  if (startApiOnBoot) {
+    const apiEnv = {
+      PATH: process.env.PATH || '/usr/bin:/bin',
+      HOME: process.env.HOME,
+      LANG: process.env.LANG || 'en_US.UTF-8',
+      DATABASE_URL: process.env.DATABASE_URL,
+      JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
+      JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+      PORT: apiPort,
+      API_PORT: apiPort,
+      NODE_ENV: 'production',
+      NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
+      NODE_PATH: nodePath,
+    };
+    scheduleApiStart(webPort, apiPort, apiEnv).catch((err) => {
+      logLine(`API schedule error: ${err?.stack || err}`);
+    });
+  } else {
+    logLine('START_API_ON_BOOT=0 — API disabled (login/API calls will fail until set to 1)');
   }
 
   const nextBin = path.join(modulesDir, 'next/dist/bin/next');
@@ -262,9 +378,18 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
   }
 
   logLine(`Starting next start on 0.0.0.0:${webPort} from ${webDir}…`);
-  process.chdir(webDir);
-  process.argv = [process.argv[0], nextBin, 'start', '-p', String(webPort), '-H', '0.0.0.0'];
-  require(nextBin);
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [nextBin, 'start', '-p', String(webPort), '-H', '0.0.0.0'], {
+      cwd: webDir,
+      env: process.env,
+      stdio: 'inherit',
+    });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      logLine(`next start exited code=${code ?? ''} signal=${signal ?? ''}`);
+      process.exit(code ?? 1);
+    });
+  });
 })().catch((err) => {
   logLine(`FATAL boot error: ${err?.stack || err}`);
   process.exit(1);

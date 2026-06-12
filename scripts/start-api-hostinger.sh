@@ -49,6 +49,16 @@ if [[ -n "${DATABASE_URL:-}" ]] && [[ "${SKIP_DB_PUSH_ON_START:-0}" != "1" ]] &&
 fi
 
 mkdir -p "$ROOT/tmp"
-echo "[$(date -Is)] API starting on 127.0.0.1:$PORT pid=$$" >>"$LOG"
+echo "[$(date -Is)] API starting on 127.0.0.1:$PORT pid=$$ node=$NODE_BIN" >>"$LOG"
+if [[ ! -f "$ROOT/apps/api/dist/main.js" ]]; then
+  echo "[$(date -Is)] FATAL: apps/api/dist/main.js missing" >>"$LOG"
+  exit 1
+fi
 setsid nohup "$NODE_BIN" "$ROOT/apps/api/dist/main.js" >>"$LOG" 2>&1 </dev/null &
 disown || true
+sleep 2
+if (echo >/dev/tcp/127.0.0.1/"$PORT") 2>/dev/null; then
+  echo "[$(date -Is)] API listening on 127.0.0.1:$PORT" >>"$LOG"
+else
+  echo "[$(date -Is)] WARNING: API process started but port $PORT not open yet" >>"$LOG"
+fi
