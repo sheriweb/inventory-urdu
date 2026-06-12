@@ -36,7 +36,7 @@ export const viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ur" dir="rtl" className={notoNastaliq.variable} suppressHydrationWarning>
-      <body suppressHydrationWarning>
+      <body className={`${notoNastaliq.className} min-h-screen`} suppressHydrationWarning>
         <ClientErrorReporter />
         {children}
       </body>

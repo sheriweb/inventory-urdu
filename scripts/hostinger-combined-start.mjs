@@ -216,12 +216,21 @@ if (existsSync(maintenanceFlag)) {
   }
 
   if (prismaCli && apiEnv.DATABASE_URL) {
-    try {
-      logLine(logPath, '[hostinger] Syncing DB schema (db push)…');
-      await runOnce(node, [prismaCli, 'db', 'push', '--skip-generate'], apiDir, apiEnv);
-      logLine(logPath, '[hostinger] DB schema sync complete.');
-    } catch (err) {
-      logLine(logPath, `[hostinger] DB schema sync failed (app will still start): ${err}`);
+    let synced = false;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        logLine(logPath, `[hostinger] Syncing DB schema (db push) attempt ${attempt}/3…`);
+        await runOnce(node, [prismaCli, 'db', 'push', '--skip-generate', '--accept-data-loss'], apiDir, apiEnv);
+        logLine(logPath, '[hostinger] DB schema sync complete.');
+        synced = true;
+        break;
+      } catch (err) {
+        logLine(logPath, `[hostinger] DB schema sync failed attempt ${attempt}: ${err}`);
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 4000));
+      }
+    }
+    if (!synced) {
+      logLine(logPath, '[hostinger] WARNING: DB schema not synced — API may need manual prisma db push.');
     }
   }
 

@@ -1,5 +1,5 @@
-/* Minimal service worker — enables install + offline shell; drafts use localStorage */
-const CACHE = 'inventory-urdu-v1';
+/* Service worker — network-first for app assets; offline shell fallback */
+const CACHE = 'inventory-urdu-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -19,6 +19,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
+
+  if (url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => response)
+        .catch(() => caches.match(event.request)),
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request).then((r) => r || caches.match('/dashboard'))),

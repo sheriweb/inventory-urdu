@@ -4,6 +4,7 @@ import { AuthUser } from '@inventory-urdu/shared';
 import { PrismaService } from '../../database/prisma.service';
 import { buildPagination, ListQueryDto } from '../../common/dto/list-query.dto';
 import { hashPassword, requireShopId } from '../../common/utils';
+import { isMissingColumnError } from '../../common/utils/prisma-errors';
 import { CreateShopDto, UpdateShopProfileDto } from './dto';
 import type {
   AdminShopBillingDto,
@@ -31,6 +32,26 @@ const shopProfileSelect = {
   reminderMessageTemplate: true,
   autoRoznamchaOnCollection: true,
   romanUrduEnabled: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const shopProfileSelectLegacy = {
+  id: true,
+  name: true,
+  logoUrl: true,
+  phone: true,
+  mobile: true,
+  email: true,
+  address: true,
+  city: true,
+  description: true,
+  brandColor: true,
+  reminderEnabled: true,
+  reminderDaysBefore: true,
+  reminderMessageTemplate: true,
+  autoRoznamchaOnCollection: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -517,12 +538,22 @@ export class ShopService {
 
   async getProfile(user: AuthUser) {
     const shopId = requireShopId(user);
-    const shop = await this.prisma.shop.findFirst({
-      where: { id: shopId },
-      select: shopProfileSelect,
-    });
-    if (!shop) throw new NotFoundException('Shop not found');
-    return shop;
+    try {
+      const shop = await this.prisma.shop.findFirst({
+        where: { id: shopId },
+        select: shopProfileSelect,
+      });
+      if (!shop) throw new NotFoundException('Shop not found');
+      return shop;
+    } catch (err) {
+      if (!isMissingColumnError(err, 'romanUrduEnabled')) throw err;
+      const shop = await this.prisma.shop.findFirst({
+        where: { id: shopId },
+        select: shopProfileSelectLegacy,
+      });
+      if (!shop) throw new NotFoundException('Shop not found');
+      return { ...shop, romanUrduEnabled: false };
+    }
   }
 
   async updateProfile(user: AuthUser, dto: UpdateShopProfileDto) {
@@ -531,28 +562,41 @@ export class ShopService {
     if (!shop) throw new NotFoundException('Shop not found');
     if (!shop.isActive) throw new BadRequestException('Shop is inactive');
 
-    return this.prisma.shop.update({
-      where: { id: shopId },
-      data: {
-        name: dto.name?.trim() || undefined,
-        logoUrl: dto.logoUrl === '' ? null : dto.logoUrl,
-        phone: dto.phone?.trim() || undefined,
-        mobile: dto.mobile?.trim() || undefined,
-        email: dto.email?.trim().toLowerCase() || undefined,
-        address: dto.address?.trim() || undefined,
-        city: dto.city?.trim() || undefined,
-        description: dto.description?.trim() || undefined,
-        brandColor: dto.brandColor && /^#[0-9A-Fa-f]{6}$/.test(dto.brandColor) ? dto.brandColor.toLowerCase() : undefined,
-        reminderEnabled: dto.reminderEnabled,
-        reminderDaysBefore: dto.reminderDaysBefore,
-        reminderMessageTemplate:
-          dto.reminderMessageTemplate === ''
-            ? null
-            : dto.reminderMessageTemplate?.trim() || undefined,
-        autoRoznamchaOnCollection: dto.autoRoznamchaOnCollection,
-        romanUrduEnabled: dto.romanUrduEnabled,
-      },
-      select: shopProfileSelect,
-    });
+    const profileData = {
+      name: dto.name?.trim() || undefined,
+      logoUrl: dto.logoUrl === '' ? null : dto.logoUrl,
+      phone: dto.phone?.trim() || undefined,
+      mobile: dto.mobile?.trim() || undefined,
+      email: dto.email?.trim().toLowerCase() || undefined,
+      address: dto.address?.trim() || undefined,
+      city: dto.city?.trim() || undefined,
+      description: dto.description?.trim() || undefined,
+      brandColor: dto.brandColor && /^#[0-9A-Fa-f]{6}$/.test(dto.brandColor) ? dto.brandColor.toLowerCase() : undefined,
+      reminderEnabled: dto.reminderEnabled,
+      reminderDaysBefore: dto.reminderDaysBefore,
+      reminderMessageTemplate:
+        dto.reminderMessageTemplate === ''
+          ? null
+          : dto.reminderMessageTemplate?.trim() || undefined,
+      autoRoznamchaOnCollection: dto.autoRoznamchaOnCollection,
+      romanUrduEnabled: dto.romanUrduEnabled,
+    };
+
+    try {
+      return await this.prisma.shop.update({
+        where: { id: shopId },
+        data: profileData,
+        select: shopProfileSelect,
+      });
+    } catch (err) {
+      if (!isMissingColumnError(err, 'romanUrduEnabled')) throw err;
+      const { romanUrduEnabled: _ignored, ...legacyData } = profileData;
+      const updated = await this.prisma.shop.update({
+        where: { id: shopId },
+        data: legacyData,
+        select: shopProfileSelectLegacy,
+      });
+      return { ...updated, romanUrduEnabled: dto.romanUrduEnabled ?? false };
+    }
   }
 }

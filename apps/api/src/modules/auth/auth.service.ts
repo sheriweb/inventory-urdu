@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { comparePassword, hashPassword } from '../../common/utils';
 import { MESSAGES } from '../../common/constants';
+import { isMissingColumnError } from '../../common/utils/prisma-errors';
 import { LoginDto, RefreshTokenDto, UpdateAccountDto } from './dto';
 import { IAuthResponse, IAuthTokens, IJwtPayload } from './interfaces/auth.interface';
 
@@ -94,36 +95,74 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        shopId: true,
-        isActive: true,
-        lastLoginAt: true,
-        createdAt: true,
-        shop: {
-          select: {
-            id: true,
-            name: true,
-            logoUrl: true,
-            phone: true,
-            mobile: true,
-            email: true,
-            address: true,
-            city: true,
-            description: true,
-            brandColor: true,
-            romanUrduEnabled: true,
-          },
+    const baseSelect = {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      shopId: true,
+      isActive: true,
+      lastLoginAt: true,
+      createdAt: true,
+      shop: {
+        select: {
+          id: true,
+          name: true,
+          logoUrl: true,
+          phone: true,
+          mobile: true,
+          email: true,
+          address: true,
+          city: true,
+          description: true,
+          brandColor: true,
+          romanUrduEnabled: true,
         },
       },
-    });
-    if (!user) throw new UnauthorizedException(MESSAGES.UNAUTHORIZED);
-    return user;
+    } as const;
+
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: baseSelect,
+      });
+      if (!user) throw new UnauthorizedException(MESSAGES.UNAUTHORIZED);
+      return user;
+    } catch (err) {
+      if (!isMissingColumnError(err, 'romanUrduEnabled')) throw err;
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          shopId: true,
+          isActive: true,
+          lastLoginAt: true,
+          createdAt: true,
+          shop: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              phone: true,
+              mobile: true,
+              email: true,
+              address: true,
+              city: true,
+              description: true,
+              brandColor: true,
+            },
+          },
+        },
+      });
+      if (!user) throw new UnauthorizedException(MESSAGES.UNAUTHORIZED);
+      return {
+        ...user,
+        shop: user.shop ? { ...user.shop, romanUrduEnabled: false } : user.shop,
+      };
+    }
   }
 
   async updateAccount(userId: string, dto: UpdateAccountDto) {

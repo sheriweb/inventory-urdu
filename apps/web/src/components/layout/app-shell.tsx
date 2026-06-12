@@ -18,6 +18,7 @@ import { applyShopBranding } from '@/lib/shop-branding';
 import { resolveImageUrl } from '@/lib/image-url';
 import { isSuperAdmin, isAdminRoute, resolveRouteForUser, ADMIN_ROUTE_PREFIX } from '@/lib/roles';
 import { AdminSubnav } from '@/components/admin/admin-subnav';
+import { ApiStatusBanner } from '@/components/layout/api-status-banner';
 import type { AuthUser } from '@inventory-urdu/shared';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -164,6 +165,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {superAdmin && isAdminRoute(pathname) ? <AdminSubnav /> : null}
+      <ApiStatusBanner />
 
       <Suspense fallback={null}>
         <NavHistoryProvider navGroups={navGroups}>

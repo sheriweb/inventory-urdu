@@ -7,7 +7,7 @@ import { notify, getApiErrorMessage } from '@/lib/notify';
 import { loadShopProfile } from '@/lib/shop-profile';
 import { applyShopBranding, normalizeBrandColor } from '@/lib/shop-branding';
 import { clearAuthCache, fetchMe } from '@/lib/auth';
-import { notifyShopSettingsUpdated } from '@/lib/roman-urdu-settings';
+import { notifyShopSettingsUpdated, persistRomanUrduPreference } from '@/lib/roman-urdu-settings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-section';
@@ -195,7 +195,7 @@ export default function ShopSettingsPage() {
       clearAuthCache();
       const me = await fetchMe(true);
       applyShopBranding(me?.shop?.brandColor ?? form.brandColor);
-      notifyShopSettingsUpdated();
+      persistRomanUrduPreference(form.romanUrduEnabled);
       setApiStale(false);
       notify.updated('دکان کی ترتیبات', 'برانڈنگ اور معلومات محفوظ ہو گئیں');
     } catch (err) {

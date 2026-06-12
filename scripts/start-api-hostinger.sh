@@ -45,6 +45,11 @@ export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=256}"
 pkill -f "$ROOT/apps/api/dist/main.js" 2>/dev/null || true
 sleep 2
 
+if [[ -n "${DATABASE_URL:-}" ]] && [[ -f "$ROOT/node_modules/prisma/build/index.js" ]]; then
+  (cd "$ROOT/apps/api" && "$NODE_BIN" "$ROOT/node_modules/prisma/build/index.js" db push --skip-generate --accept-data-loss) \
+    >>"$LOG" 2>&1 || true
+fi
+
 mkdir -p "$ROOT/tmp"
 setsid nohup "$NODE_BIN" "$ROOT/apps/api/dist/main.js" >>"$LOG" 2>&1 </dev/null &
 disown || true

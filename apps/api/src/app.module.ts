@@ -24,6 +24,7 @@ import { RoznamchaModule } from './modules/roznamcha/roznamcha.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { AutomationModule } from './modules/automation/automation.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { MonitoringModule } from './modules/monitoring/monitoring.module';
     UploadModule,
     AutomationModule,
     MonitoringModule,
+    HealthModule,
   ],
   providers: [
     {

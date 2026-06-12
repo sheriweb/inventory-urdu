@@ -27,7 +27,13 @@ fi
 
 if [[ -n "${DATABASE_URL:-}" ]]; then
   echo "▶ Syncing DB schema (prisma db push)…"
-  (cd apps/api && node ../../node_modules/prisma/build/index.js db push --skip-generate)
+  for attempt in 1 2 3; do
+    if (cd apps/api && node ../../node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss); then
+      break
+    fi
+    echo "⚠ db push attempt $attempt failed — retrying in 5s…"
+    sleep 5
+  done
 fi
 
 if [[ "${RUN_DB_SETUP:-0}" == "1" && -n "${DATABASE_URL:-}" && "${FORCE_DB_SETUP:-0}" == "1" ]]; then
