@@ -6,7 +6,6 @@ cd "$ROOT"
 PORT="${VERIFY_PORT:-3990}"
 API_PORT="${API_INTERNAL_PORT:-4001}"
 LOG="$ROOT/tmp/verify-boot.log"
-STARTER="$ROOT/scripts/hostinger-production-start.sh"
 
 rm -f "$LOG" "$ROOT/tmp/web.lock" "$ROOT/tmp/web-boot.dir/pid" 2>/dev/null || true
 rm -rf "$ROOT/tmp/web-boot.dir" "$ROOT/tmp/api-schedule.dir" 2>/dev/null || true
@@ -26,10 +25,9 @@ echo "▶ Checking build artifacts…"
 [[ -f apps/web/.next/BUILD_ID ]] || fail "Missing apps/web/.next — run: npm run hostinger:build"
 pass "Build artifacts OK"
 
-echo "▶ Starting production starter on port ${PORT}..."
-chmod +x "$STARTER"
+echo "▶ Starting server.js on port ${PORT}..."
 PORT="$PORT" START_API_ON_BOOT=0 API_START_DELAY_MS=60000 \
-  bash "$STARTER" >>"$LOG" 2>&1 &
+  node "$ROOT/server.js" >>"$LOG" 2>&1 &
 MAIN_PID=$!
 sleep 8
 
@@ -57,7 +55,7 @@ fi
 pass "HTTP /login → 200"
 
 echo "▶ Simulating duplicate Passenger worker…"
-PORT="$PORT" START_API_ON_BOOT=0 bash "$STARTER" >>"$LOG" 2>&1 &
+PORT="$PORT" START_API_ON_BOOT=0 node "$ROOT/server.js" >>"$LOG" 2>&1 &
 DUP_PID=$!
 sleep 2
 if kill -0 "$DUP_PID" 2>/dev/null; then
@@ -80,4 +78,4 @@ wait "$MAIN_PID" 2>/dev/null || true
 echo ""
 echo "✅ All local Hostinger boot checks passed."
 echo "   Do NOT redeploy until Hostinger process limit has cleared (~30–60 min)."
-echo "   Then ONE redeploy with entry file: scripts/hostinger-production-start.sh"
+echo "   Entry file in hPanel: server.js"

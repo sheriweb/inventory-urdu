@@ -15,10 +15,10 @@
 | Setting | Value |
 |---------|-------|
 | Build command | `npm run hostinger:build` |
-| **Entry file** | `scripts/hostinger-production-start.sh` |
+| **Entry file** | `server.js` |
 | Output directory | *(khali)* |
 
-`server.js` bhi chalega (bash script ko call karta hai) lekin **direct `.sh` entry behtar hai** — ek hi process (`exec next start`).
+`server.js` is the hPanel entry (`.js` required). `scripts/hostinger-production-start.sh` is kept for manual SSH use only.
 
 ---
 
