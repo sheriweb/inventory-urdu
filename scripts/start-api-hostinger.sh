@@ -40,10 +40,7 @@ export NODE_ENV=production
 export HOSTINGER_COMBINED=1
 export LAZY_DB_CONNECT=1
 export UV_THREADPOOL_SIZE=2
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=192}"
-
-pkill -f "$ROOT/apps/api/dist/main.js" 2>/dev/null || true
-sleep 2
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=128}"
 
 if [[ -n "${DATABASE_URL:-}" ]] && [[ "${SKIP_DB_PUSH_ON_START:-0}" != "1" ]] && [[ -f "$ROOT/node_modules/prisma/build/index.js" ]]; then
   (cd "$ROOT/apps/api" && "$NODE_BIN" "$ROOT/node_modules/prisma/build/index.js" db push --skip-generate --accept-data-loss) \
@@ -51,5 +48,6 @@ if [[ -n "${DATABASE_URL:-}" ]] && [[ "${SKIP_DB_PUSH_ON_START:-0}" != "1" ]] &&
 fi
 
 mkdir -p "$ROOT/tmp"
+echo "[$(date -Is)] API starting on 127.0.0.1:$PORT pid=$$" >>"$LOG"
 setsid nohup "$NODE_BIN" "$ROOT/apps/api/dist/main.js" >>"$LOG" 2>&1 </dev/null &
 disown || true
