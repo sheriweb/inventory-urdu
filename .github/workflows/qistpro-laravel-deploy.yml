@@ -1,0 +1,57 @@
+# DISABLED on push — run manually from GitHub Actions tab.
+
+name: QistPro Laravel Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      remove_old_nextjs:
+        description: 'Remove old Next.js nodejs folder after deploy'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+concurrency:
+  group: qistpro-laravel-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sheriweb/qistpro
+          path: qistpro
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql, fileinfo, tokenizer, xml, ctype, json, bcmath
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: qistpro/package-lock.json
+
+      - name: Install sshpass & rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass rsync
+
+      - name: Upload Laravel to Hostinger
+        env:
+          SKIP_LOCAL_BUILD: '0'
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SSH_REMOTE_PATH: /home/u972626041/domains/qistpro.shop/laravel
+          REMOVE_OLD_NEXTJS: ${{ inputs.remove_old_nextjs }}
+        working-directory: qistpro
+        run: bash scripts/deploy-hostinger-ssh.sh
