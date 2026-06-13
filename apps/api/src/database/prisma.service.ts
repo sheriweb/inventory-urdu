@@ -1,27 +1,25 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 
-function buildAdapterConfig(databaseUrl: string) {
-  const parsed = new URL(databaseUrl);
-  const socketPath = parsed.searchParams.get('socket') || undefined;
-  const host = parsed.hostname === 'localhost' && !socketPath ? '127.0.0.1' : parsed.hostname;
-  return {
-    host,
-    port: parsed.port ? Number(parsed.port) : 3306,
-    user: decodeURIComponent(parsed.username),
-    password: decodeURIComponent(parsed.password),
-    database: decodeURIComponent(parsed.pathname.replace(/^\//, '')),
-    socketPath,
-    // Shared hosting is sensitive to thread/process pressure, so keep the
-    // DB pool to a single connection per app process.
-    connectionLimit: 1,
-    minimumIdle: 0,
-    acquireTimeout: Number(process.env.DB_ACQUIRE_TIMEOUT_MS || 20_000),
-    connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10_000),
-    idleTimeout: Number(process.env.DB_IDLE_TIMEOUT_SECONDS || 300),
-    allowPublicKeyRetrieval: true,
-  };
+// Keep the connection pool small and the timeouts bounded. Shared hosting
+// (Hostinger/CloudLinux) is very sensitive to connection/process pressure, so
+// we cap the pool and fail fast instead of hanging forever on a stuck pool.
+function withPoolParams(databaseUrl: string): string {
+  try {
+    const url = new URL(databaseUrl);
+    if (!url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', process.env.DB_CONNECTION_LIMIT || '3');
+    }
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', process.env.DB_POOL_TIMEOUT || '20');
+    }
+    if (!url.searchParams.has('connect_timeout')) {
+      url.searchParams.set('connect_timeout', process.env.DB_CONNECT_TIMEOUT || '15');
+    }
+    return url.toString();
+  } catch {
+    return databaseUrl;
+  }
 }
 
 @Injectable()
@@ -30,41 +28,34 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly databaseUrl: string;
 
   constructor() {
-    const url = process.env.DATABASE_URL;
-    if (!url) {
+    const raw = process.env.DATABASE_URL;
+    if (!raw) {
       throw new Error('DATABASE_URL is not set');
     }
-    const adapter = new PrismaMariaDb(buildAdapterConfig(url), {
-      onConnectionError: (err) => {
-        const details = {
-          message: err?.message,
-          code: (err as { code?: string })?.code,
-          errno: (err as { errno?: number })?.errno,
-          sqlState: (err as { sqlState?: string })?.sqlState,
-          fatal: (err as { fatal?: boolean })?.fatal,
-        };
-        console.error('Prisma MariaDB connection error:', details);
-      },
+    const url = withPoolParams(raw);
+    super({
+      datasources: { db: { url } },
+      log: ['warn', 'error'],
     });
-    super({ adapter });
     this.databaseUrl = url;
   }
 
   async ensureConnected() {
-    if (!this.connected) {
-      try {
-        await this.$connect();
-        this.connected = true;
-      } catch (err) {
-        const cause = (err as { cause?: unknown })?.cause;
-        const details = cause && typeof cause === 'object' ? JSON.stringify(cause) : String(cause || '');
-        console.error('Prisma connect failed:', {
-          databaseUrl: this.databaseUrl.replace(/(:\/\/[^:]+:)[^@]*(@)/, '$1***$2'),
-          message: (err as Error)?.message || String(err),
-          cause: details,
-        });
-        throw err;
-      }
+    if (this.connected) {
+      return;
+    }
+    try {
+      await this.$connect();
+      this.connected = true;
+    } catch (err) {
+      const cause = (err as { cause?: unknown })?.cause;
+      const details = cause && typeof cause === 'object' ? JSON.stringify(cause) : String(cause || '');
+      console.error('Prisma connect failed:', {
+        databaseUrl: this.databaseUrl.replace(/(:\/\/[^:]+:)[^@]*(@)/, '$1***$2'),
+        message: (err as Error)?.message || String(err),
+        cause: details,
+      });
+      throw err;
     }
   }
 
