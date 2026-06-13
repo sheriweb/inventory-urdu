@@ -1,26 +1,34 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
+
+function buildAdapterConfig(databaseUrl: string) {
+  const parsed = new URL(databaseUrl);
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 3306,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: decodeURIComponent(parsed.pathname.replace(/^\//, '')),
+    socketPath: parsed.searchParams.get('socket') || undefined,
+    // Shared hosting is sensitive to thread/process pressure, so keep the
+    // DB pool to a single connection per app process.
+    connectionLimit: 1,
+    minimumIdle: 0,
+  };
+}
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private connected = false;
 
   constructor() {
-    super();
-    // A panicked query engine never recovers; exit so the watchdog in
-    // server.js relaunches a fresh API process within ~30s.
-    this.$use(async (params, next) => {
-      try {
-        return await next(params);
-      } catch (err) {
-        const message = String((err as Error)?.message || err);
-        if (message.includes('PANIC') || message.includes('timer has gone away')) {
-          console.error('Prisma engine panic detected — exiting for watchdog restart:', message);
-          setTimeout(() => process.exit(1), 250).unref();
-        }
-        throw err;
-      }
-    });
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      throw new Error('DATABASE_URL is not set');
+    }
+    const adapter = new PrismaMariaDb(buildAdapterConfig(url));
+    super({ adapter });
   }
 
   async ensureConnected() {

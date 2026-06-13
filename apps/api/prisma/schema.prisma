@@ -1,8 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  // Binary engine: library engine panics with "PANIC: timer has gone away"
-  // on CloudLinux/Hostinger when LVE freezes the process.
-  engineType = "binary"
+  provider   = "prisma-client-js"
+  engineType = "client"
 }
 
 datasource db {
