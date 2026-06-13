@@ -161,6 +161,7 @@ async function ensureApiRunning(apiPort, apiEnv, label) {
       }
       await bootstrap({
         adapter: new ExpressAdapter(global.__hostingerExpressApp),
+        mountPath: '/api/v1',
         listen: false,
         logger: {
           log: (msg) => {
