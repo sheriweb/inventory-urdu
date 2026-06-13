@@ -26,8 +26,12 @@ const webBootDir = path.join(tmpDir, 'web-boot.dir');
 const apiLogPath = path.join(tmpDir, 'api.log');
 const modulesDir = path.join(root, 'node_modules');
 const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 2_000);
+const WEB_BOOT_HEARTBEAT_MS = Number(process.env.WEB_BOOT_HEARTBEAT_MS || 2_000);
+const WEB_BOOT_STALE_MS = Number(process.env.WEB_BOOT_STALE_MS || 45_000);
 const startApiOnBoot = process.env.START_API_ON_BOOT !== '0';
 let apiAppPromise = null;
+let webBootHeartbeat = null;
+let ownsWebBootLock = false;
 
 function logLine(message) {
   const line = `[${new Date().toISOString()}] [hostinger] ${message}`;
@@ -204,6 +208,47 @@ function readLockPid(lockDir) {
   }
 }
 
+function writeWebBootHeartbeat() {
+  try {
+    writeFileSync(path.join(webBootDir, 'heartbeat'), String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readLockHeartbeat(lockDir) {
+  try {
+    return Number(readFileSync(path.join(lockDir, 'heartbeat'), 'utf8').trim());
+  } catch {
+    return 0;
+  }
+}
+
+function startWebBootHeartbeat() {
+  ownsWebBootLock = true;
+  writeWebBootHeartbeat();
+  if (webBootHeartbeat) return;
+  webBootHeartbeat = setInterval(writeWebBootHeartbeat, WEB_BOOT_HEARTBEAT_MS);
+  webBootHeartbeat.unref();
+}
+
+function cleanupWebBootLock() {
+  if (webBootHeartbeat) {
+    clearInterval(webBootHeartbeat);
+    webBootHeartbeat = null;
+  }
+  if (!ownsWebBootLock) return;
+  try {
+    const ownerPid = readLockPid(webBootDir);
+    if (ownerPid === process.pid) {
+      rmSync(webBootDir, { recursive: true, force: true });
+    }
+  } catch {
+    /* ignore */
+  }
+  ownsWebBootLock = false;
+}
+
 async function ensureSingleWebBoot(webPort) {
   if (await isPortOpen(webPort, '127.0.0.1')) {
     logLine(`PORT ${webPort} already listening — duplicate worker exits`);
@@ -214,6 +259,7 @@ async function ensureSingleWebBoot(webPort) {
     try {
       mkdirSync(webBootDir);
       writeFileSync(path.join(webBootDir, 'pid'), String(process.pid));
+      startWebBootHeartbeat();
       return;
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
@@ -230,12 +276,20 @@ async function ensureSingleWebBoot(webPort) {
 
     // Port still closed: lock is stale if its owner pid is dead (app restart).
     const ownerPid = readLockPid(webBootDir);
+    const heartbeatAt = readLockHeartbeat(webBootDir);
+    const heartbeatAge = heartbeatAt ? Date.now() - heartbeatAt : Number.POSITIVE_INFINITY;
     if (ownerPid && isPidAlive(ownerPid)) {
       logLine(`Boot lock held by live pid ${ownerPid} — duplicate worker exits`);
       process.exit(0);
     }
+    if (heartbeatAge < WEB_BOOT_STALE_MS) {
+      logLine(
+        `Boot lock heartbeat is recent (${Math.round(heartbeatAge)}ms) for pid ${ownerPid || 'unknown'} — duplicate worker exits`,
+      );
+      process.exit(0);
+    }
 
-    logLine(`Stale web boot lock (pid ${ownerPid || 'unknown'} dead) — taking over`);
+    logLine(`Stale web boot lock (pid ${ownerPid || 'unknown'} dead, heartbeat ${Math.round(heartbeatAge)}ms old) — taking over`);
     try {
       rmSync(webBootDir, { recursive: true, force: true });
     } catch {
@@ -254,6 +308,15 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (err) => {
   logLine(`unhandledRejection: ${err?.stack || err}`);
   process.exit(1);
+});
+process.on('exit', cleanupWebBootLock);
+process.on('SIGTERM', () => {
+  cleanupWebBootLock();
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  cleanupWebBootLock();
+  process.exit(0);
 });
 
 for (const file of [
