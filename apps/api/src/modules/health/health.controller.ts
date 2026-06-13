@@ -8,6 +8,18 @@ function maskDatabaseUrl(url: string | undefined): string {
   return url.replace(/(:\/\/[^:]+:)[^@]*(@)/, '$1***$2');
 }
 
+// The MariaDB driver attaches the *real* connection failure as a nested
+// `cause`, while Prisma only surfaces a generic "pool timeout". Walk the chain
+// so the actual reason (auth, host blocked, RSA key, socket timeout) shows up.
+function collectCauses(err: unknown, depth = 0): string[] {
+  if (!err || depth > 6) return [];
+  const e = err as { message?: string; code?: string; errno?: number; sqlState?: string; cause?: unknown };
+  const parts = [e.message || String(err), e.code, e.errno != null ? `errno=${e.errno}` : '', e.sqlState ? `sqlState=${e.sqlState}` : '']
+    .filter(Boolean)
+    .join(' | ');
+  return [parts, ...collectCauses(e.cause, depth + 1)];
+}
+
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
@@ -35,6 +47,7 @@ export class HealthController {
         errorName: e?.name,
         errorCode: e?.code,
         message: String(e?.message || e).slice(0, 600),
+        causes: collectCauses(err),
       };
     }
   }
