@@ -362,11 +362,11 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
     .join(path.delimiter);
   process.env.NODE_PATH = nodePath;
 
-  try {
-    writeFileSync(path.join(tmpDir, 'restart.txt'), String(Date.now()));
-  } catch {
-    /* ignore */
-  }
+  // NOTE: Do NOT write tmp/restart.txt here. Passenger watches that file and
+  // restarts the app whenever its mtime changes. Touching it on every boot
+  // creates an endless restart loop (boot → touch → restart → boot …), which
+  // floods the process table and causes 503s. The deploy script touches it
+  // exactly once (scripts/post-deploy-hostinger.sh) to trigger a single restart.
 
   const apiEnv = {
     PATH: process.env.PATH || '/usr/bin:/bin',
