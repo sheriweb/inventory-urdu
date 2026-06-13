@@ -2,7 +2,7 @@
 /**
  * Hostinger hPanel entry file: server.js  (.js required — do not use .sh here)
  */
-const http = require('node:http');
+const express = require('express');
 const net = require('node:net');
 const {
   appendFileSync,
@@ -110,7 +110,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function startNextServer(webPort) {
+async function prepareNextApp(webPort) {
   const nextPkg = path.join(modulesDir, 'next');
   if (!existsSync(nextPkg)) {
     logLine(`FATAL: next package missing at ${nextPkg}`);
@@ -121,42 +121,21 @@ async function startNextServer(webPort) {
   process.chdir(webDir);
 
   const next = require(nextPkg);
-  const app = next({
+  const nextApp = next({
     dev: false,
     dir: webDir,
     hostname: '0.0.0.0',
     port: Number(webPort),
   });
-  const handle = app.getRequestHandler();
-  await app.prepare();
-
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
-      handle(req, res).catch((err) => {
-        logLine(`Next request error: ${err?.stack || err}`);
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.end('Internal Server Error');
-        }
-      });
-    });
-
-    server.once('error', (err) => {
-      logLine(`Next server error: ${err?.stack || err}`);
-      reject(err);
-    });
-
-    server.listen(Number(webPort), '0.0.0.0', () => {
-      logLine(`Next.js ready on 0.0.0.0:${webPort} pid=${process.pid}`);
-      resolve(server);
-    });
-  });
+  const handle = nextApp.getRequestHandler();
+  await nextApp.prepare();
+  return { nextApp, handle };
 }
 
 async function ensureApiRunning(apiPort, apiEnv, label) {
   if (apiAppPromise) return apiAppPromise;
 
-  logLine(`${label}: starting API on 127.0.0.1:${apiPort}…`);
+  logLine(`${label}: mounting API in-process at /api/v1…`);
   const mergedEnv = {
     ...process.env,
     ...apiEnv,
@@ -176,8 +155,13 @@ async function ensureApiRunning(apiPort, apiEnv, label) {
     try {
       process.chdir(root);
       const { bootstrap } = require(path.join(apiDir, 'dist/main.js'));
+      const { ExpressAdapter } = require(path.join(modulesDir, '@nestjs/platform-express'));
+      if (!global.__hostingerExpressApp) {
+        throw new Error('shared express app missing');
+      }
       await bootstrap({
-        port: Number(apiPort),
+        adapter: new ExpressAdapter(global.__hostingerExpressApp),
+        listen: false,
         logger: {
           log: (msg) => {
             try {
@@ -197,7 +181,7 @@ async function ensureApiRunning(apiPort, apiEnv, label) {
           },
         },
       });
-      logLine(`API ready on 127.0.0.1:${apiPort}`);
+      logLine(`API ready in-process at /api/v1`);
       return true;
     } catch (err) {
       apiAppPromise = null;
@@ -320,8 +304,33 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
     /* ignore */
   }
 
+  const apiEnv = {
+    PATH: process.env.PATH || '/usr/bin:/bin',
+    HOME: process.env.HOME,
+    LANG: process.env.LANG || 'en_US.UTF-8',
+    DATABASE_URL: process.env.DATABASE_URL,
+    JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
+    JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+    PORT: apiPort,
+    API_PORT: apiPort,
+    NODE_ENV: 'production',
+    NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
+    NODE_PATH: nodePath,
+  };
+
+  const nextBin = path.join(modulesDir, 'next/dist/bin/next');
+  if (!existsSync(nextBin)) {
+    logLine(`FATAL: next binary missing at ${nextBin}`);
+    process.exit(1);
+  }
+
+  const { handle } = await prepareNextApp(webPort);
+  const app = express();
+  global.__hostingerExpressApp = app;
+
   if (startApiOnBoot) {
-    const apiEnv = {
+    // Mount API before Next catch-all so /api/v1/* never hits the Next proxy.
+    await ensureApiRunning(apiPort, {
       PATH: process.env.PATH || '/usr/bin:/bin',
       HOME: process.env.HOME,
       LANG: process.env.LANG || 'en_US.UTF-8',
@@ -333,23 +342,27 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
       NODE_ENV: 'production',
       NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
       NODE_PATH: nodePath,
-    };
-    setTimeout(() => {
-      ensureApiRunning(apiPort, apiEnv, 'boot').catch((err) => {
-        logLine(`API schedule error: ${err?.stack || err}`);
-      });
-    }, API_START_DELAY_MS).unref();
+    }, 'boot');
   } else {
     logLine('START_API_ON_BOOT=0 — API disabled (login/API calls will fail until set to 1)');
   }
 
-  const nextBin = path.join(modulesDir, 'next/dist/bin/next');
-  if (!existsSync(nextBin)) {
-    logLine(`FATAL: next binary missing at ${nextBin}`);
-    process.exit(1);
-  }
+  app.use((req, res) => {
+    Promise.resolve(handle(req, res)).catch((err) => {
+      logLine(`Next request error: ${err?.stack || err}`);
+      if (!res.headersSent) {
+        res.status(500).send('Internal Server Error');
+      }
+    });
+  });
 
-  await startNextServer(webPort);
+  await new Promise((resolve, reject) => {
+    const server = app.listen(Number(webPort), '0.0.0.0', () => {
+      logLine(`Next.js ready on 0.0.0.0:${webPort} pid=${process.pid}`);
+      resolve();
+    });
+    server.once('error', reject);
+  });
 })().catch((err) => {
   logLine(`FATAL boot error: ${err?.stack || err}`);
   process.exit(1);

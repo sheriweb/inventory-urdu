@@ -6,9 +6,8 @@ const TOKEN_KEY = 'accessToken';
 const REFRESH_KEY = 'refreshToken';
 
 export function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    return '/api/v1';
-  }
+  if (typeof window !== 'undefined') return '/api/v1';
+  if (process.env.HOSTINGER_COMBINED === '1') return '/api/v1';
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api/v1';
 }
 

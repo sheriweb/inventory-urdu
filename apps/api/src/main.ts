@@ -1,17 +1,21 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { ExpressAdapter, NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 
 type BootstrapOptions = {
+  adapter?: ExpressAdapter;
+  listen?: boolean;
   port?: number;
   logger?: Pick<Console, 'log' | 'error'>;
 };
 
 export async function bootstrap(options: BootstrapOptions = {}) {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = options.adapter
+    ? await NestFactory.create<NestExpressApplication>(AppModule, options.adapter)
+    : await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
   const corsOrigins = configService.get<string[]>('app.corsOrigins') ?? [];
@@ -39,8 +43,13 @@ export async function bootstrap(options: BootstrapOptions = {}) {
   );
 
   const port = options.port ?? configService.get<number>('app.port') ?? 4001;
-  await app.listen(port);
-  (options.logger ?? console).log(`Inventory Urdu API listening on http://localhost:${port}/${apiPrefix}`);
+  if (options.listen === false) {
+    await app.init();
+    (options.logger ?? console).log(`Inventory Urdu API mounted at /${apiPrefix}`);
+  } else {
+    await app.listen(port);
+    (options.logger ?? console).log(`Inventory Urdu API listening on http://localhost:${port}/${apiPrefix}`);
+  }
   return app;
 }
 
