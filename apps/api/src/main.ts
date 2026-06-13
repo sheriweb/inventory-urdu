@@ -5,7 +5,12 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 
-async function bootstrap() {
+type BootstrapOptions = {
+  port?: number;
+  logger?: Pick<Console, 'log' | 'error'>;
+};
+
+export async function bootstrap(options: BootstrapOptions = {}) {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
@@ -33,9 +38,15 @@ async function bootstrap() {
     }),
   );
 
-  const port = configService.get<number>('app.port') ?? 4001;
+  const port = options.port ?? configService.get<number>('app.port') ?? 4001;
   await app.listen(port);
-  console.log(`Inventory Urdu API listening on http://localhost:${port}/${apiPrefix}`);
+  (options.logger ?? console).log(`Inventory Urdu API listening on http://localhost:${port}/${apiPrefix}`);
+  return app;
 }
 
-bootstrap();
+if (require.main === module) {
+  bootstrap().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

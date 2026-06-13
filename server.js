@@ -3,7 +3,6 @@
  * Hostinger hPanel entry file: server.js  (.js required — do not use .sh here)
  */
 const http = require('node:http');
-const { spawn } = require('node:child_process');
 const net = require('node:net');
 const {
   appendFileSync,
@@ -24,15 +23,11 @@ const apiDir = path.join(root, 'apps/api');
 const tmpDir = path.join(root, 'tmp');
 const logPath = path.join(tmpDir, 'hostinger.log');
 const webBootDir = path.join(tmpDir, 'web-boot.dir');
-const apiLockDir = path.join(tmpDir, 'api-boot.dir');
-const apiScheduleDir = path.join(tmpDir, 'api-schedule.dir');
 const apiLogPath = path.join(tmpDir, 'api.log');
-const apiPidPath = path.join(tmpDir, 'api.pid');
-const apiStampPath = path.join(tmpDir, 'api.stamp');
 const modulesDir = path.join(root, 'node_modules');
 const API_START_DELAY_MS = Number(process.env.API_START_DELAY_MS || 2_000);
-const API_WATCHDOG_INTERVAL_MS = Number(process.env.API_WATCHDOG_INTERVAL_MS || 30_000);
 const startApiOnBoot = process.env.START_API_ON_BOOT !== '0';
+let apiAppPromise = null;
 
 function logLine(message) {
   const line = `[${new Date().toISOString()}] [hostinger] ${message}`;
@@ -65,17 +60,6 @@ function loadDotEnv(filePath) {
   } catch {
     /* ignore */
   }
-}
-
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
-}
-
-function writeEnvFile(filePath, env) {
-  const lines = Object.entries(env)
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => `${key}=${shellQuote(value)}`);
-  writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
 }
 
 function isPidAlive(pid) {
@@ -169,124 +153,10 @@ async function startNextServer(webPort) {
   });
 }
 
-function apiDistStamp() {
-  try {
-    return String(require('node:fs').statSync(path.join(apiDir, 'dist/main.js')).mtimeMs);
-  } catch {
-    return '';
-  }
-}
-
-function readFileTrim(filePath) {
-  try {
-    return readFileSync(filePath, 'utf8').trim();
-  } catch {
-    return '';
-  }
-}
-
-async function stopOutdatedApi(apiPort, label) {
-  const currentStamp = apiDistStamp();
-  const runningStamp = readFileTrim(apiStampPath);
-  if (currentStamp && runningStamp === currentStamp) return false;
-
-  logLine(`${label}: API on ${apiPort} runs old build (stamp ${runningStamp || 'unknown'} != ${currentStamp}) — restarting`);
-  const pid = Number(readFileTrim(apiPidPath));
-  if (pid && isPidAlive(pid)) {
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch {
-      /* ignore */
-    }
-  }
-  // Fallback for API processes we did not record (older deploys).
-  try {
-    spawn('pkill', ['-f', 'apps/api/dist/main.js'], { stdio: 'ignore' });
-  } catch {
-    /* ignore */
-  }
-
-  for (let i = 0; i < 10; i += 1) {
-    await sleep(1000);
-    if (!(await isPortOpen(apiPort))) break;
-  }
-  return true;
-}
-
 async function ensureApiRunning(apiPort, apiEnv, label) {
-  if (await isPortOpen(apiPort)) {
-    const restarted = await stopOutdatedApi(apiPort, label);
-    if (!restarted) return true;
-    if (await isPortOpen(apiPort)) {
-      logLine(`${label}: old API still holding ${apiPort} — will retry on next watchdog tick`);
-      return false;
-    }
-  }
-
-  // Lock is per-attempt: clear it so a previously crashed API can be relaunched.
-  try {
-    rmSync(apiLockDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  if (apiAppPromise) return apiAppPromise;
 
   logLine(`${label}: starting API on 127.0.0.1:${apiPort}…`);
-  startApiDetached(apiEnv);
-
-  for (let i = 0; i < 15; i += 1) {
-    await sleep(2000);
-    if (await isPortOpen(apiPort)) {
-      logLine(`API ready on 127.0.0.1:${apiPort}`);
-      return true;
-    }
-  }
-
-  logLine(`WARNING: API still not on 127.0.0.1:${apiPort} after 30s — check tmp/api.log`);
-  return false;
-}
-
-async function scheduleApiStart(webPort, apiPort, apiEnv) {
-  try {
-    mkdirSync(apiScheduleDir);
-  } catch {
-    logLine('API supervisor already running in another worker');
-    return;
-  }
-
-  await sleep(API_START_DELAY_MS);
-  await ensureApiRunning(apiPort, apiEnv, 'boot');
-
-  // Watchdog: web process is long-lived under Passenger; if the API dies
-  // (memory kill, crash), bring it back without waiting for a redeploy.
-  let checking = false;
-  setInterval(() => {
-    if (checking) return;
-    checking = true;
-    ensureApiRunning(apiPort, apiEnv, 'watchdog')
-      .catch((err) => logLine(`watchdog error: ${err?.message || err}`))
-      .finally(() => {
-        checking = false;
-      });
-  }, API_WATCHDOG_INTERVAL_MS).unref();
-}
-
-function startApiDetached(apiEnv) {
-  try {
-    mkdirSync(apiLockDir);
-  } catch (err) {
-    if (err.code === 'EEXIST') {
-      logLine('API boot lock held — skip duplicate start');
-      return;
-    }
-    throw err;
-  }
-
-  const apiNode =
-    process.env.API_NODE_BIN ||
-    (existsSync('/opt/alt/alt-nodejs20/root/bin/node')
-      ? '/opt/alt/alt-nodejs20/root/bin/node'
-      : process.execPath);
-  const apiPort = apiEnv.PORT || apiEnv.API_PORT || '4001';
   const mergedEnv = {
     ...process.env,
     ...apiEnv,
@@ -299,43 +169,46 @@ function startApiDetached(apiEnv) {
     API_PORT: String(apiPort),
     NODE_OPTIONS: apiEnv.NODE_OPTIONS || process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
   };
-  writeEnvFile(path.join(tmpDir, 'api.env'), mergedEnv);
+  Object.assign(process.env, mergedEnv);
 
-  try {
-    appendFileSync(apiLogPath, `[${new Date().toISOString()}] API starting on 127.0.0.1:${apiPort} node=${apiNode}\n`);
-  } catch {
-    /* ignore */
-  }
-
-  const logFd = (() => {
+  apiAppPromise = (async () => {
+    const previousCwd = process.cwd();
     try {
-      return require('node:fs').openSync(apiLogPath, 'a');
-    } catch {
-      return 'ignore';
+      process.chdir(root);
+      const { bootstrap } = require(path.join(apiDir, 'dist/main.js'));
+      await bootstrap({
+        port: Number(apiPort),
+        logger: {
+          log: (msg) => {
+            try {
+              appendFileSync(apiLogPath, `[${new Date().toISOString()}] ${msg}\n`);
+            } catch {
+              /* ignore */
+            }
+            logLine(String(msg));
+          },
+          error: (msg) => {
+            try {
+              appendFileSync(apiLogPath, `[${new Date().toISOString()}] ERROR ${msg}\n`);
+            } catch {
+              /* ignore */
+            }
+            logLine(`API error: ${msg}`);
+          },
+        },
+      });
+      logLine(`API ready on 127.0.0.1:${apiPort}`);
+      return true;
+    } catch (err) {
+      apiAppPromise = null;
+      logLine(`FATAL API boot error: ${err?.stack || err}`);
+      throw err;
+    } finally {
+      process.chdir(previousCwd);
     }
   })();
 
-  const child = spawn(apiNode, [path.join(apiDir, 'dist/main.js')], {
-    cwd: root,
-    env: mergedEnv,
-    detached: true,
-    stdio: ['ignore', logFd, logFd],
-  });
-  child.unref();
-  if (typeof logFd === 'number') {
-    try {
-      require('node:fs').closeSync(logFd);
-    } catch {
-      /* ignore */
-    }
-  }
-  try {
-    writeFileSync(apiPidPath, String(child.pid ?? ''));
-    writeFileSync(apiStampPath, apiDistStamp());
-  } catch {
-    /* ignore */
-  }
-  logLine(`API process spawned pid=${child.pid ?? 'unknown'} on 127.0.0.1:${apiPort}`);
+  return apiAppPromise;
 }
 
 function readLockPid(lockDir) {
@@ -389,18 +262,6 @@ async function ensureSingleWebBoot(webPort) {
   process.exit(0);
 }
 
-function clearStaleApiState() {
-  // We are the primary web worker of a fresh boot generation: previous
-  // scheduler timers died with their process, so reset scheduling locks.
-  for (const dir of [apiScheduleDir, apiLockDir]) {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 process.on('uncaughtException', (err) => {
   logLine(`uncaughtException: ${err?.stack || err}`);
   process.exit(1);
@@ -447,7 +308,6 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
 
 (async () => {
   await ensureSingleWebBoot(webPort);
-  clearStaleApiState();
 
   const nodePath = [modulesDir, path.join(apiDir, 'node_modules'), path.join(webDir, 'node_modules')]
     .filter((p) => existsSync(p))
@@ -474,9 +334,11 @@ if (!existsSync(path.join(webDir, '.next/BUILD_ID'))) {
       NODE_OPTIONS: process.env.API_NODE_OPTIONS || '--max-old-space-size=128',
       NODE_PATH: nodePath,
     };
-    scheduleApiStart(webPort, apiPort, apiEnv).catch((err) => {
-      logLine(`API schedule error: ${err?.stack || err}`);
-    });
+    setTimeout(() => {
+      ensureApiRunning(apiPort, apiEnv, 'boot').catch((err) => {
+        logLine(`API schedule error: ${err?.stack || err}`);
+      });
+    }, API_START_DELAY_MS).unref();
   } else {
     logLine('START_API_ON_BOOT=0 — API disabled (login/API calls will fail until set to 1)');
   }
